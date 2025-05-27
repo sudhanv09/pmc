@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use regex::Regex;
 use std::fmt::Debug;
+use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -158,7 +160,7 @@ fn index_shows(dir: String) -> Vec<Tv> {
 
     for entry in WalkDir::new(&dir)
         .min_depth(1)
-        .max_depth(2) // Show -> Season
+        .max_depth(1)
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir())
@@ -169,24 +171,78 @@ fn index_shows(dir: String) -> Vec<Tv> {
             .and_then(|s| s.to_str())
             .unwrap_or("Unknown Show")
             .to_string();
-        let mut seasons = vec![];
 
-        for season_entry in WalkDir::new(show_path)
+        let mut seasons_map: HashMap<i32, Season> = HashMap::new();
+
+        let subdirs: Vec<_> = WalkDir::new(show_path)
             .min_depth(1)
             .max_depth(1)
             .into_iter()
             .filter_map(Result::ok)
             .filter(|e| e.path().is_dir())
-        {
-            let season_path = season_entry.path();
-            let season_name = season_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Unknown Season");
+            .collect();
 
-            let mut episodes = vec![];
+        if !subdirs.is_empty() {
+            // Case: Show -> Season Dir -> Episodes
+            for season_entry in subdirs {
+                let season_path = season_entry.path();
+                let season_name = season_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown Season");
+                let season_number = guess_season(season_name);
 
-            for file_entry in WalkDir::new(season_path)
+                let mut episodes = vec![];
+
+                for file_entry in WalkDir::new(season_path)
+                    .min_depth(1)
+                    .max_depth(1)
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .filter(|e| e.path().is_file())
+                {
+                    let path = file_entry.path();
+                    if !valid_ext(path) {
+                        continue;
+                    }
+
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Unnamed Episode")
+                        .to_string();
+                    let metadata = file_entry.metadata().ok();
+                    let created_at = metadata
+                        .as_ref()
+                        .and_then(|m| m.created().or_else(|_| m.modified()).ok())
+                        .map(|t| DateTime::<Local>::from(t).format("%d/%m/%Y %T").to_string())
+                        .unwrap_or_default();
+                    let size = metadata.map(|m| m.len()).unwrap_or(0);
+
+                    episodes.push(Episode {
+                        id: nanoid!(10),
+                        name,
+                        path: path.to_path_buf(),
+                        created_at,
+                        size,
+                    });
+                }
+
+                if !episodes.is_empty() {
+                    episodes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                    seasons_map.insert(season_number, Season {
+                        id: nanoid!(10),
+                        name: season_name.to_string(),
+                        number: season_number,
+                        episodes,
+                    });
+                }
+            }
+        } else {
+            // Case: Show -> Episodes directly
+            let mut episode_map: HashMap<i32, Vec<Episode>> = HashMap::new();
+
+            for file_entry in WalkDir::new(show_path)
                 .min_depth(1)
                 .max_depth(1)
                 .into_iter()
@@ -211,28 +267,33 @@ fn index_shows(dir: String) -> Vec<Tv> {
                     .unwrap_or_default();
                 let size = metadata.map(|m| m.len()).unwrap_or(0);
 
-                episodes.sort_by(|a: &Episode, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-
-                episodes.push(Episode {
-                    id: nanoid!(10),
-                    name,
-                    path: path.to_path_buf(),
-                    created_at,
-                    size,
-                });
+                let season_number = guess_season(&name);
+                episode_map
+                    .entry(season_number)
+                    .or_default()
+                    .push(Episode {
+                        id: nanoid!(10),
+                        name,
+                        path: path.to_path_buf(),
+                        created_at,
+                        size,
+                    });
             }
 
-            if !episodes.is_empty() {
-                seasons.push(Season {
+            for (season_number, mut episodes) in episode_map {
+                episodes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                seasons_map.insert(season_number, Season {
                     id: nanoid!(10),
-                    name: season_name.to_string(),
-                    number: guess_season(season_name),
+                    name: format!("Season {}", season_number),
+                    number: season_number,
                     episodes,
                 });
             }
         }
 
+        let mut seasons: Vec<_> = seasons_map.into_values().collect();
         seasons.sort_by_key(|s| s.number);
+
         if !seasons.is_empty() {
             shows.push(Tv {
                 id: nanoid!(10),
@@ -241,9 +302,11 @@ fn index_shows(dir: String) -> Vec<Tv> {
             });
         }
     }
+
     shows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     shows
 }
+
 
 pub fn index(movie_dir: String, show_dir: String) -> Library {
     Library {
