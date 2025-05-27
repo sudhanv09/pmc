@@ -190,7 +190,7 @@ fn index_shows(dir: String) -> Vec<Tv> {
                 seasons.push(Season {
                     id: nanoid!(10),
                     name: season_name.to_string(),
-                    number: guess_season(&season_name),
+                    number: guess_season(season_name),
                     episodes,
                 });
             }
@@ -209,14 +209,13 @@ fn index_shows(dir: String) -> Vec<Tv> {
 }
 
 pub fn index(movie_dir: String, show_dir: String) -> Library {
-    let library = Library {
+    Library {
         movies: index_movies(movie_dir),
         shows: index_shows(show_dir),
-    };
-
-    library
+    }
 }
 
+// TODO: how to handle updates?
 pub fn update_index() -> Library {
     let library = Library {
         movies: vec![],

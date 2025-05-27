@@ -1,5 +1,6 @@
 mod indexer;
 mod mpv;
+mod library;
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
