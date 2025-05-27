@@ -1,26 +1,31 @@
-use std::collections::{HashMap, VecDeque};
-use chrono::{DateTime, Utc};
+#![allow(warnings)]
 
-#[derive(Debug, Clone)]
+use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MediaType {
     Movie,
-    ShowEpisode,
+    Show
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WatchEntry {
-    pub media_type: MediaType,
     pub media_id: String,
-    pub complete: bool,
-    pub watched_at: DateTime<Utc>,
-    pub percent_watched: f32,
+    pub media_type: MediaType,
+    pub progress: i16,
+    pub complete: bool, 
+    pub watched_at: DateTime<Local>,
 }
 
-pub struct ShowHistory {
-    pub episodes: HashMap<String, WatchEntry>,
+pub fn get_recent_watches(limit: i8)  {
+    unimplemented!()
 }
 
-pub struct WatchHistory {
-    pub recent: VecDeque<WatchEntry>,
-    pub movie_history: HashMap<String, WatchEntry>,
-    pub series_history: HashMap<String, WatchEntry>,
+pub fn resume() {
+    unimplemented!()
+}
+
+pub fn save_state() {
+    unimplemented!()
 }

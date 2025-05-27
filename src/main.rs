@@ -1,4 +1,4 @@
-use crate::cli::{App, Commands, handle_list_command, handle_play_command};
+use crate::cli::{App, Commands, handle_list_command, handle_play_command, handle_resume_command};
 use clap::Parser;
 mod cli;
 mod db;
@@ -12,11 +12,18 @@ async fn main() -> tokio::io::Result<()> {
         String::from("/home/zeus/Downloads/media/movies"),
         String::from("/home/zeus/Downloads/media/tv"),
     );
+
+    db::Db::init("./pmc.db").await.map_err(|e| {
+        eprintln!("Database initialization failed: {}", e);
+        std::process::exit(1);
+    }).unwrap();
     
     let cli = App::parse();
     let result = match &cli.command {
-        Commands::List { list_subcommand } => handle_list_command(list_subcommand, &index).await,
-        Commands::Play { play_subcommand } => handle_play_command(play_subcommand, &index, &cli.mpv_socket).await,
+        Commands::List => handle_list_command(&index).await,
+        Commands::Play => handle_play_command(&index, &cli.mpv_socket).await,
+        Commands::Resume => handle_resume_command(&index, &cli.mpv_socket).await,
+        Commands::Recent => todo!(),
     };
 
     if let Err(e) = result {
