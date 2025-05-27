@@ -18,11 +18,14 @@ async fn main() -> tokio::io::Result<()> {
         std::process::exit(1);
     }).unwrap();
     
+    
     let cli = App::parse();
+    let mpv = mpv::Player::init(&cli.mpv_socket).await?;
+    
     let result = match &cli.command {
         Commands::List => handle_list_command(&index).await,
-        Commands::Play => handle_play_command(&index, &cli.mpv_socket).await,
-        Commands::Resume => handle_resume_command(&index, &cli.mpv_socket).await,
+        Commands::Play => handle_play_command(&index, mpv).await,
+        Commands::Resume => handle_resume_command(&index, &mpv).await,
         Commands::Recent => todo!(),
     };
 
