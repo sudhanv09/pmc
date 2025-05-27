@@ -90,8 +90,39 @@ fn guess_episode(item: &str) -> i32 {
     0
 }
 
+fn guess_movie_name(item: &str) -> String {
+    let quality_keywords = [
+        "1080p", "720p", "bluray", "webrip", "web-dl", "hdrip", "x264", "x265", "hevc",
+    ];
+    let cleaned = item.replace(['.', '_', '[', ']', '(', ')'], " ");
+    let tokens = cleaned.split_whitespace().collect::<Vec<_>>();
+
+    let mut name_parts = Vec::new();
+
+    for token in &tokens {
+        if token.len() == 4 && token.chars().all(|c| c.is_ascii_digit()) {
+            let y = token.parse::<u16>().unwrap_or(0);
+            if (1900..=2099).contains(&y) {
+                break;
+            }
+        }
+
+        if quality_keywords
+            .iter()
+            .any(|q| token.eq_ignore_ascii_case(q))
+        {
+            break;
+        }
+
+        name_parts.push(*token);
+    }
+
+    name_parts.join(" ")
+}
+
 fn index_movies(dir: String) -> Vec<Movie> {
     WalkDir::new(dir)
+        .max_depth(2)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_file())
@@ -101,7 +132,7 @@ fn index_movies(dir: String) -> Vec<Movie> {
                 return None;
             }
 
-            let name = path.file_stem().and_then(|s| s.to_str())?;
+            let name = guess_movie_name(path.file_stem().and_then(|s| s.to_str())?);
             let metadata = entry.metadata().ok()?;
 
             let created_time = metadata.created().or_else(|_| metadata.modified()).ok()?;
