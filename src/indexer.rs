@@ -121,7 +121,7 @@ fn guess_movie_name(item: &str) -> String {
 }
 
 fn index_movies(dir: String) -> Vec<Movie> {
-    WalkDir::new(dir)
+    let mut movies: Vec<Movie> = WalkDir::new(dir)
         .max_depth(2)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -147,7 +147,10 @@ fn index_movies(dir: String) -> Vec<Movie> {
                 size: metadata.len(),
             })
         })
-        .collect()
+        .collect();
+
+    movies.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    movies
 }
 
 fn index_shows(dir: String) -> Vec<Tv> {
@@ -208,6 +211,8 @@ fn index_shows(dir: String) -> Vec<Tv> {
                     .unwrap_or_default();
                 let size = metadata.map(|m| m.len()).unwrap_or(0);
 
+                episodes.sort_by(|a: &Episode, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
                 episodes.push(Episode {
                     id: nanoid!(10),
                     name,
@@ -227,6 +232,7 @@ fn index_shows(dir: String) -> Vec<Tv> {
             }
         }
 
+        seasons.sort_by_key(|s| s.number);
         if !seasons.is_empty() {
             shows.push(Tv {
                 id: nanoid!(10),
@@ -235,7 +241,7 @@ fn index_shows(dir: String) -> Vec<Tv> {
             });
         }
     }
-
+    shows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     shows
 }
 
