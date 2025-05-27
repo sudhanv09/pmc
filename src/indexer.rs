@@ -1,47 +1,49 @@
+#![allow(warnings)]
+
 use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use regex::Regex;
 use std::fmt::Debug;
-use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use serde::{ Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Library {
     pub movies: Vec<Movie>,
     pub shows: Vec<Tv>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Movie {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
-    pub created_at: String,
+    pub created_at: DateTime<Local>,
     pub size: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Tv {
     pub id: String,
     pub name: String,
     pub seasons: Vec<Season>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Season {
     pub id: String,
     pub name: String,
     pub number: i32,
     pub episodes: Vec<Episode>,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Episode {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
-    pub created_at: String,
+    pub created_at: DateTime<Local>,
     pub size: u64,
 }
 
@@ -135,18 +137,20 @@ fn index_movies(dir: String) -> Vec<Movie> {
             }
 
             let name = guess_movie_name(path.file_stem().and_then(|s| s.to_str())?);
-            let metadata = entry.metadata().ok()?;
-
-            let created_time = metadata.created().or_else(|_| metadata.modified()).ok()?;
-            let datetime: DateTime<Local> = DateTime::from(created_time);
-            let created_at_str = datetime.format("%d/%m/%Y %T").to_string();
+            let metadata = entry.metadata().ok();
+            let created_at: DateTime<Local> = metadata
+                .as_ref()
+                .and_then(|m| m.created().or_else(|_| m.modified()).ok())
+                .map(|t| t.into())
+                .unwrap_or_else(Local::now);
+            let size = metadata.map(|m| m.len()).unwrap_or(0);
 
             Some(Movie {
                 id: nanoid!(10),
                 name: name.to_string(),
                 path: path.to_path_buf(),
-                created_at: created_at_str,
-                size: metadata.len(),
+                created_at,
+                size,
             })
         })
         .collect();
@@ -212,11 +216,11 @@ fn index_shows(dir: String) -> Vec<Tv> {
                         .unwrap_or("Unnamed Episode")
                         .to_string();
                     let metadata = file_entry.metadata().ok();
-                    let created_at = metadata
+                    let created_at: DateTime<Local> = metadata
                         .as_ref()
                         .and_then(|m| m.created().or_else(|_| m.modified()).ok())
-                        .map(|t| DateTime::<Local>::from(t).format("%d/%m/%Y %T").to_string())
-                        .unwrap_or_default();
+                        .map(|t| t.into())
+                        .unwrap_or_else(Local::now);
                     let size = metadata.map(|m| m.len()).unwrap_or(0);
 
                     episodes.push(Episode {
@@ -263,8 +267,8 @@ fn index_shows(dir: String) -> Vec<Tv> {
                 let created_at = metadata
                     .as_ref()
                     .and_then(|m| m.created().or_else(|_| m.modified()).ok())
-                    .map(|t| DateTime::<Local>::from(t).format("%d/%m/%Y %T").to_string())
-                    .unwrap_or_default();
+                    .map(|t| t.into())
+                    .unwrap_or_else(Local::now);
                 let size = metadata.map(|m| m.len()).unwrap_or(0);
 
                 let season_number = guess_season(&name);
