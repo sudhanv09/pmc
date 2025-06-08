@@ -1,13 +1,13 @@
 #![allow(warnings)]
 
-use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use serde::{ Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Library {
@@ -53,77 +53,6 @@ fn valid_ext(path: &Path) -> bool {
         Some("mkv") | Some("mp4") | Some("avi")
     )
 }
-
-/// Extracts the season number from a file or directory name.
-/// Returns 0 if not found.
-fn guess_season(item: &str) -> i32 {
-    let patterns = [
-        Regex::new(r"(?i)S(\d{1,2})E\d{1,2}").unwrap(), // S01E02
-        Regex::new(r"(?i)Season[ _]?(\d{1,2})").unwrap(), // Season 2
-        Regex::new(r"(?i)S(\d{1,2})").unwrap(),         // S1
-    ];
-
-    for re in &patterns {
-        if let Some(caps) = re.captures(item) {
-            if let Some(season) = caps.get(1) {
-                return season.as_str().parse().unwrap_or(0);
-            }
-        }
-    }
-
-    0
-}
-
-/// Extracts the episode number from a file or directory name.
-/// Returns 0 if not found.
-fn guess_episode(item: &str) -> i32 {
-    let patterns = [
-        Regex::new(r"(?i)S\d{1,2}E(\d{1,2})").unwrap(), // S01E02
-        Regex::new(r"(?i)Episode[ _]?(\d{1,2})").unwrap(), // Episode 3
-        Regex::new(r"(?i)E(\d{1,2})").unwrap(),         // E3
-    ];
-
-    for re in &patterns {
-        if let Some(caps) = re.captures(item) {
-            if let Some(ep) = caps.get(1) {
-                return ep.as_str().parse().unwrap_or(0);
-            }
-        }
-    }
-
-    0
-}
-
-fn guess_movie_name(item: &str) -> String {
-    let quality_keywords = [
-        "1080p", "720p", "bluray", "webrip", "web-dl", "hdrip", "x264", "x265", "hevc",
-    ];
-    let cleaned = item.replace(['.', '_', '[', ']', '(', ')'], " ");
-    let tokens = cleaned.split_whitespace().collect::<Vec<_>>();
-
-    let mut name_parts = Vec::new();
-
-    for token in &tokens {
-        if token.len() == 4 && token.chars().all(|c| c.is_ascii_digit()) {
-            let y = token.parse::<u16>().unwrap_or(0);
-            if (1900..=2099).contains(&y) {
-                break;
-            }
-        }
-
-        if quality_keywords
-            .iter()
-            .any(|q| token.eq_ignore_ascii_case(q))
-        {
-            break;
-        }
-
-        name_parts.push(*token);
-    }
-
-    name_parts.join(" ")
-}
-
 fn index_movies(dir: String) -> Vec<Movie> {
     let mut movies: Vec<Movie> = WalkDir::new(dir)
         .max_depth(2)
@@ -234,12 +163,15 @@ fn index_shows(dir: String) -> Vec<Tv> {
 
                 if !episodes.is_empty() {
                     episodes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-                    seasons_map.insert(season_number, Season {
-                        id: nanoid!(10),
-                        name: season_name.to_string(),
-                        number: season_number,
-                        episodes,
-                    });
+                    seasons_map.insert(
+                        season_number,
+                        Season {
+                            id: nanoid!(10),
+                            name: season_name.to_string(),
+                            number: season_number,
+                            episodes,
+                        },
+                    );
                 }
             }
         } else {
@@ -272,26 +204,26 @@ fn index_shows(dir: String) -> Vec<Tv> {
                 let size = metadata.map(|m| m.len()).unwrap_or(0);
 
                 let season_number = guess_season(&name);
-                episode_map
-                    .entry(season_number)
-                    .or_default()
-                    .push(Episode {
-                        id: nanoid!(10),
-                        name,
-                        path: path.to_path_buf(),
-                        created_at,
-                        size,
-                    });
+                episode_map.entry(season_number).or_default().push(Episode {
+                    id: nanoid!(10),
+                    name,
+                    path: path.to_path_buf(),
+                    created_at,
+                    size,
+                });
             }
 
             for (season_number, mut episodes) in episode_map {
                 episodes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-                seasons_map.insert(season_number, Season {
-                    id: nanoid!(10),
-                    name: format!("Season {}", season_number),
-                    number: season_number,
-                    episodes,
-                });
+                seasons_map.insert(
+                    season_number,
+                    Season {
+                        id: nanoid!(10),
+                        name: format!("Season {}", season_number),
+                        number: season_number,
+                        episodes,
+                    },
+                );
             }
         }
 
@@ -310,7 +242,6 @@ fn index_shows(dir: String) -> Vec<Tv> {
     shows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     shows
 }
-
 
 pub fn index(movie_dir: String, show_dir: String) -> Library {
     Library {
