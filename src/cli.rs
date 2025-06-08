@@ -1,12 +1,12 @@
 #![allow(warnings)]
+use crate::db;
 use crate::indexer::Library;
-use crate::library::get_recent_watches;
+use crate::library::MediaType;
 use crate::mpv::Player;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
-use dialoguer::{MultiSelect, Select};
-use crate::mpv;
 
 #[derive(Parser)]
 #[command(name = "pmc")]
@@ -47,15 +47,52 @@ pub async fn handle_list_command(index: &Library) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
-pub async fn handle_recent_command() -> Result<(), Box<dyn std::error::Error>> {
-    let recent = get_recent_watches(5);
+pub async fn handle_recent_command(index: &Library) -> Result<(), Box<dyn std::error::Error>> {
+    let db = db::Db::get();
+    let recent = db.get_recent_watches(5).await?;
 
+    if recent.is_empty() {
+        println!("{}", "No recent watches found.".yellow());
+        return Ok(());
+    }
+
+    println!("{}", "Recent watches found.".green());
+    for item in &recent {
+        match item.media_type {
+            MediaType::Movie => {
+                if let Some(movie) = index.movies.iter().find(|m| m.id == item.media_id) {
+                    println!(
+                        "{} | {} | Progress: {}% | Completed: {}",
+                        movie.name.cyan(),
+                        item.watched_at.format("%Y-%m-%d %H:%M"),
+                        item.progress,
+                        if item.complete { "Yes" } else { "No" }
+                    );
+                } else {
+                    println!("{} (Movie ID not found)", item.media_id.red());
+                }
+            }
+            MediaType::Show => {
+                if let Some(tv) = index.shows.iter().find(|m| m.id == item.media_id) {
+                    println!(
+                        "{} | {} | Progress: {}% | Completed: {}",
+                        tv.name.cyan(),
+                        item.watched_at.format("%Y-%m-%d %H:%M"),
+                        item.progress,
+                        if item.complete { "Yes" } else { "No" }
+                    );
+                } else {
+                    println!("{} (Show ID not found)", item.media_id.red());
+                }
+            }
+        }
+    }
     Ok(())
 }
 
 pub async fn handle_resume_command(
     index: &Library,
-    player: &Player
+    player: &Player,
 ) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
@@ -90,11 +127,14 @@ pub async fn handle_play_command(
                 .items(&movie_titles[..])
                 .interact()
                 .unwrap();
-            
+
             let movie = &index.movies[choice];
             println!("Now playing movie: {}", movie.name);
 
-            player.play_file(movie.path.clone()).await.expect("Unable to play file");
+            player
+                .play_file(movie.path.clone())
+                .await
+                .expect("Unable to play file");
         }
         1 => {
             if index.shows.is_empty() {

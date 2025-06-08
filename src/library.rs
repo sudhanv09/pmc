@@ -18,10 +18,6 @@ pub struct WatchEntry {
     pub watched_at: DateTime<Local>,
 }
 
-pub fn get_recent_watches(limit: i8)  {
-    unimplemented!()
-}
-
 pub fn resume() {
     unimplemented!()
 }

@@ -1,4 +1,4 @@
-use crate::cli::{App, Commands, handle_list_command, handle_play_command, handle_resume_command};
+use crate::cli::{App, Commands, handle_list_command, handle_play_command, handle_resume_command, handle_recent_command};
 use clap::Parser;
 mod cli;
 mod db;
@@ -17,16 +17,16 @@ async fn main() -> tokio::io::Result<()> {
         eprintln!("Database initialization failed: {}", e);
         std::process::exit(1);
     }).unwrap();
-    
-    
+
+
     let cli = App::parse();
-    let mpv = mpv::Player::init(&cli.mpv_socket).await?;
-    
+    let mpv = mpv::Player::init(&cli.mpv_socket).await.expect("Is mpv running? Run it with mpv --force-window --idle --input-ipc-server=<socketname>");
+
     let result = match &cli.command {
         Commands::List => handle_list_command(&index).await,
         Commands::Play => handle_play_command(&index, mpv).await,
         Commands::Resume => handle_resume_command(&index, &mpv).await,
-        Commands::Recent => todo!(),
+        Commands::Recent => handle_recent_command(&index).await,
     };
 
     if let Err(e) = result {
