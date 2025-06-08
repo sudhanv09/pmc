@@ -3,6 +3,8 @@
 use crate::library::{MediaType, WatchEntry};
 use chrono::{DateTime, Local};
 use colored::Colorize;
+use nanoid::nanoid;
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};
 use std::sync::OnceLock;
 
@@ -22,12 +24,15 @@ impl Db {
         };
 
         let db_path = std::path::Path::new(db_path);
-        
-        let pool = SqlitePoolOptions::new().connect(&format!("sqlite:{}", db_path.display())).await?;
+
+        let pool = SqlitePoolOptions::new()
+            .connect(&format!("sqlite:{}", db_path.display()))
+            .await?;
 
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS watch_history (
+                id TEXT PRIMARY KEY,
                 media_id TEXT NOT NULL,
                 media_type TEXT NOT NULL,
                 progress INTEGER NOT NULL,
@@ -50,17 +55,47 @@ impl Db {
         DB_CTX.get().expect("DB not initialized")
     }
 
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
+    fn row_to_watch_entry(&self, row: Vec<SqliteRow>) -> Vec<WatchEntry> {
+        row.into_iter()
+            .map(|row| {
+                let id = row.get("id");
+                let media_id: String = row.get("media_id");
+                let media_type_str: String = row.get("media_type");
+                let progress: i16 = row.get("progress");
+                let complete: bool = row.get("complete");
+                let watched_at_str: String = row.get("watched_at");
+
+                let media_type = match media_type_str.as_str() {
+                    "Movie" => MediaType::Movie,
+                    "Show" => MediaType::Show,
+                    _ => panic!("Unknown media type"),
+                };
+
+                let watched_at = DateTime::parse_from_rfc3339(&watched_at_str)
+                    .unwrap()
+                    .with_timezone(&Local);
+
+                WatchEntry {
+                    id,
+                    media_id,
+                    media_type,
+                    progress,
+                    complete,
+                    watched_at,
+                }
+            })
+            .collect::<Vec<WatchEntry>>()
     }
 
     pub async fn save_state(&self, entry: &WatchEntry) -> sqlx::Result<()> {
+        let gen_id = nanoid!();
         sqlx::query(
             r#"
-            INSERT INTO watch_history (media_id, media_type, progress, complete, watched_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             "#,
         )
+        .bind(gen_id)
         .bind(&entry.media_id)
         .bind(match entry.media_type {
             MediaType::Movie => "Movie",
@@ -88,35 +123,23 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
 
-        let entries = rows
-            .into_iter()
-            .map(|row| {
-                let media_id: String = row.get("media_id");
-                let media_type_str: String = row.get("media_type");
-                let progress: i16 = row.get("progress");
-                let complete: bool = row.get("complete");
-                let watched_at_str: String = row.get("watched_at");
+        let entries = self.row_to_watch_entry(rows);
+        Ok(entries)
+    }
 
-                let media_type = match media_type_str.as_str() {
-                    "Movie" => MediaType::Movie,
-                    "Show" => MediaType::Show,
-                    _ => panic!("Unknown media type"),
-                };
+    pub async fn get_media_history(&self, id: String) -> sqlx::Result<Vec<WatchEntry>> {
+        let rows = sqlx::query(
+            r#"
+                select media_id, media_type, progress, complete, watched_at
+                FROM watch_history
+                WHERE id = ?
+                "#,
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await?;
 
-                let watched_at = DateTime::parse_from_rfc3339(&watched_at_str)
-                    .unwrap()
-                    .with_timezone(&Local);
-
-                WatchEntry {
-                    media_id,
-                    media_type,
-                    progress,
-                    complete,
-                    watched_at,
-                }
-            })
-            .collect::<Vec<WatchEntry>>();
-
+        let entries = self.row_to_watch_entry(rows);
         Ok(entries)
     }
 }
