@@ -88,14 +88,13 @@ impl Db {
     }
 
     pub async fn save_state(&self, entry: &WatchEntry) -> sqlx::Result<()> {
-        let gen_id = nanoid!();
         sqlx::query(
             r#"
             INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             "#,
         )
-        .bind(gen_id)
+        .bind(&entry.id)
         .bind(&entry.media_id)
         .bind(match entry.media_type {
             MediaType::Movie => "Movie",
