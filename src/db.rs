@@ -112,7 +112,7 @@ impl Db {
     pub async fn get_recent_watches(&self, limit: i64) -> sqlx::Result<Vec<WatchEntry>> {
         let rows = sqlx::query(
             r#"
-            SELECT media_id, media_type, progress, complete, watched_at
+            SELECT *
             FROM watch_history
             ORDER BY watched_at DESC
             LIMIT ?
@@ -129,7 +129,7 @@ impl Db {
     pub async fn get_media_history(&self, id: String) -> sqlx::Result<Vec<WatchEntry>> {
         let rows = sqlx::query(
             r#"
-                select media_id, media_type, progress, complete, watched_at
+                select *
                 FROM watch_history
                 WHERE id = ?
                 "#,

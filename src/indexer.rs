@@ -2,12 +2,12 @@
 
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use crate::utils::{guess_name, guess_season, guess_episode};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Library {
@@ -65,7 +65,7 @@ fn index_movies(dir: String) -> Vec<Movie> {
                 return None;
             }
 
-            let name = guess_movie_name(path.file_stem().and_then(|s| s.to_str())?);
+            let name = guess_name(path.file_stem().and_then(|s| s.to_str())?);
             let metadata = entry.metadata().ok();
             let created_at: DateTime<Local> = metadata
                 .as_ref()
@@ -99,11 +99,12 @@ fn index_shows(dir: String) -> Vec<Tv> {
         .filter(|e| e.path().is_dir())
     {
         let show_path = entry.path();
-        let show_name = show_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unknown Show")
-            .to_string();
+        let show_name = guess_name(
+            show_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown Show"),
+        );
 
         let mut seasons_map: HashMap<i32, Season> = HashMap::new();
 

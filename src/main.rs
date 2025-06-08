@@ -5,6 +5,7 @@ mod db;
 mod indexer;
 mod library;
 mod mpv;
+mod utils;
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
@@ -25,7 +26,7 @@ async fn main() -> tokio::io::Result<()> {
     let result = match &cli.command {
         Commands::List => handle_list_command(&index).await,
         Commands::Recent => handle_recent_command(&index).await,
-        
+
         Commands::Play => handle_play_command(&index, mpv).await,
         Commands::Resume => handle_resume_command(&index, &mpv).await,
     };
