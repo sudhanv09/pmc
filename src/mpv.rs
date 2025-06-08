@@ -42,10 +42,10 @@ impl Player {
         let cmd = MpvCommand { command: args };
         let json_str = serde_json::to_string(&cmd)? + "\n";
         self.writer.write_all(json_str.as_bytes()).await?;
+        self.writer.flush().await?;
 
-        let mut reader = BufReader::new(&mut self.reader);
         let mut response = String::new();
-        reader.read_line(&mut response).await?;
+        self.reader.read_line(&mut response).await?;
 
         Ok(serde_json::from_str(&response)?)
     }
