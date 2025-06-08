@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::path::Path;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf, split};
 use tokio::net::UnixStream;
 
 #[derive(Debug, Serialize)]
@@ -15,22 +16,34 @@ struct MpvResponse {
     error: Option<String>,
 }
 
+#[derive(Debug)]
+pub enum MpvEvent {
+    EndFile,
+    Shutdown,
+    Other(String),
+}
+
 pub struct Player {
-    socket: UnixStream,
+    writer: BufWriter<WriteHalf<UnixStream>>,
+    reader: BufReader<ReadHalf<UnixStream>>,
 }
 
 impl Player {
     pub async fn init<P: AsRef<Path>>(socket_path: P) -> tokio::io::Result<Self> {
-        let socket = UnixStream::connect(socket_path).await?;
-        Ok(Self { socket })
+        let stream = UnixStream::connect(socket_path).await?;
+        let (read_half, write_half) = split(stream);
+        Ok(Self {
+            writer: BufWriter::new(write_half),
+            reader: BufReader::new(read_half),
+        })
     }
 
     async fn send_command(&mut self, args: Vec<String>) -> tokio::io::Result<MpvResponse> {
         let cmd = MpvCommand { command: args };
         let json_str = serde_json::to_string(&cmd)? + "\n";
-        self.socket.write_all(json_str.as_bytes()).await?;
+        self.writer.write_all(json_str.as_bytes()).await?;
 
-        let mut reader = BufReader::new(&mut self.socket);
+        let mut reader = BufReader::new(&mut self.reader);
         let mut response = String::new();
         reader.read_line(&mut response).await?;
 
@@ -47,10 +60,34 @@ impl Player {
             .await
     }
 
+    pub async fn next_event(&mut self) -> Option<MpvEvent> {
+        let mut line = String::new();
+        match self.reader.read_line(&mut line).await {
+            Ok(0) => return None, // EOF
+            Ok(_) => {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if let Some(event) = value.get("event").and_then(|e| e.as_str()) {
+                        return match event {
+                            "end-file" => Some(MpvEvent::EndFile),
+                            "shutdown" => Some(MpvEvent::Shutdown),
+                            _ => Some(MpvEvent::Other(event.to_string())),
+                        };
+                    }
+                }
+            }
+            Err(_) => return None,
+        }
+        None
+    }
+
     pub async fn play_file<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
         let path_str = path.as_ref().to_string_lossy();
-        self.send_command(vec!["loadfile".into(), path_str.into_owned(), "replace".into()])
-            .await?;
+        self.send_command(vec![
+            "loadfile".into(),
+            path_str.into_owned(),
+            "replace".into(),
+        ])
+        .await?;
         Ok(())
     }
 
@@ -62,5 +99,32 @@ impl Player {
             }
         }
         Ok(None)
+    }
+
+    pub async fn monitor_playback(&mut self) -> Result<(i16, bool), Box<dyn Error>> {
+        let resp = self.get_property("duration").await?;
+        let duration = resp.data.and_then(|d| d.as_f64()).unwrap_or(0.0);
+        loop {
+            if let Some(event) = self.next_event().await {
+                match event {
+                    MpvEvent::EndFile | MpvEvent::Shutdown => {
+                        let position = match self.get_position().await {
+                            Ok(Some(p)) => p,
+                            _ => 0.0,
+                        };
+
+                        let progress = if duration > 0.0 {
+                            ((position / duration) * 100.0).round() as i16
+                        } else {
+                            0
+                        };
+
+                        let complete = progress > 95;
+                        return Ok((progress, complete));
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }
