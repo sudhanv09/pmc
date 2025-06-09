@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use crate::utils::{guess_name, guess_season, guess_episode};
+use crate::utils::{guess_name, guess_season};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Library {
@@ -249,14 +249,4 @@ pub fn index(movie_dir: String, show_dir: String) -> Library {
         movies: index_movies(movie_dir),
         shows: index_shows(show_dir),
     }
-}
-
-// TODO: how to handle updates?
-pub fn update_index() -> Library {
-    let library = Library {
-        movies: vec![],
-        shows: vec![],
-    };
-
-    library
 }
