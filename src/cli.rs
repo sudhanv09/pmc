@@ -2,14 +2,13 @@
 
 use crate::db;
 use crate::indexer::Library;
-use crate::library::{MediaType, WatchEntry, flatten_show};
+use crate::library::{MediaType, PlaybackState, SharedState, flatten_show};
 use crate::mpv::Player;
-use chrono::Local;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
-use nanoid::nanoid;
+use std::sync::{Arc, Mutex};
 
 #[derive(Parser)]
 #[command(name = "pmc")]
@@ -106,15 +105,16 @@ pub async fn handle_play_command(
     mut player: Player,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = db::Db::get();
+
+    let state: SharedState = Arc::new(Mutex::new(PlaybackState::new()));
+
     let media_select = &["Movies", "Tv"];
     let selections = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Pick your food")
+        .with_prompt("What do you want to watch?")
         .items(&media_select[..])
         .interact()
         .unwrap();
-
-    println!("Select one of the {}", media_select[0]);
-
+    
     match selections {
         0 => {
             if index.movies.is_empty() {
@@ -136,22 +136,18 @@ pub async fn handle_play_command(
             let movie = &index.movies[choice];
             println!("Now playing movie: {}", movie.name);
 
-            player
-                .play_file(movie.path.clone())
-                .await
-                .expect("Unable to play file");
+            {
+                let mut state_guard = state.lock().unwrap();
+                state_guard.start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie);
+            }
 
-            let (progress, complete) = player.monitor_playback().await?;
-            let entry = WatchEntry {
-                id: nanoid!(),
-                media_id: movie.id.clone(),
-                media_type: MediaType::Movie,
-                progress,
-                complete,
-                watched_at: Local::now(),
-            };
+            player.play_file(movie.path.clone()).await?;
+            let monitor_result = player.start_monitoring(state.clone()).await?;
+            if let Err(e) = db.save_playback_progress(state.clone()).await {
+                println!("Failed to save progress: {}", e);
+            }
 
-            db.save_state(&entry).await.expect("Unable to save state");
+            monitor_result
         }
         1 => {
             if index.shows.is_empty() {
@@ -210,18 +206,25 @@ pub async fn handle_play_command(
 
             if let Some(episode) = to_play {
                 println!("Now playing: {}", episode.name);
+                {
+                    let mut state_guard = state.lock().unwrap();
+                    state_guard.start_playback(
+                        episode.id.clone(),
+                        episode.path.clone(),
+                        MediaType::Show
+                    );
+                }
+                
                 player.play_file(episode.path.clone()).await?;
-                let (progress, complete) = player.monitor_playback().await?;
-                let entry = WatchEntry {
-                    id: nanoid!(),
-                    media_id: show.id.clone(),
-                    media_type: MediaType::Show,
-                    progress,
-                    complete,
-                    watched_at: Local::now(),
-                };
+                // Start monitoring
+                let monitoring_result = player.start_monitoring(state.clone()).await;
 
-                db.save_state(&entry).await.expect("Unable to save state");
+                // Save progress when done
+                if let Err(e) = db.save_playback_progress(state.clone()).await {
+                    println!("Failed to save progress: {}", e);
+                }
+
+                monitoring_result?;
             } else {
                 println!("Nothing to play.");
             }

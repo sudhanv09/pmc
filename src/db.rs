@@ -1,6 +1,6 @@
 #![allow(warnings)]
 
-use crate::library::{MediaType, WatchEntry};
+use crate::library::{MediaType, SharedState, WatchEntry};
 use chrono::{DateTime, Local};
 use colored::Colorize;
 use nanoid::nanoid;
@@ -140,5 +140,37 @@ impl Db {
 
         let entries = self.row_to_watch_entry(rows);
         Ok(entries)
+    }
+
+    pub async fn save_playback_progress(&self, state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
+        let state_guard = state.lock().unwrap();
+
+        if !state_guard.should_save_progress() {
+            return Ok(());
+        }
+
+        let media_id = state_guard.media_id.as_ref().unwrap();
+        let percent_pos = state_guard.percent_pos.unwrap();
+        let media_type = state_guard.media_type.as_ref().unwrap();
+
+        // Consider complete if > 90%
+        let complete = percent_pos > 90.0;
+        let progress = percent_pos as i16;
+
+        println!("Saving progress: {}% for media {}", progress, media_id);
+
+        let entry = WatchEntry {
+            id: nanoid!(),
+            media_id: media_id.clone(),
+            media_type: media_type.clone(),
+            progress,
+            complete,
+            watched_at: Local::now(),
+        };
+
+        // You'll need to implement this based on your existing DB structure
+        self.save_state(&entry).await?;
+
+        Ok(())
     }
 }
