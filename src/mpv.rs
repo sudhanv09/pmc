@@ -261,7 +261,6 @@ impl Player {
                                 {
                                     match prop_change.name.as_str() {
                                         "pause" => {
-                                            println!("PAUSED");
                                             if let Some(is_paused) =
                                                 prop_change.data.and_then(|d| d.as_bool())
                                             {
@@ -270,7 +269,6 @@ impl Player {
                                                 } else {
                                                     PlaybackEvent::Resumed
                                                 };
-                                                println!("Sending event: {:?}", event); // Debug log
                                                 let _ = tx.send(event);
                                                 let mut state_guard = state.lock().unwrap();
                                                 state_guard.is_playing = !is_paused;

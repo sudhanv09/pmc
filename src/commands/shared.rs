@@ -83,8 +83,6 @@ pub async fn monitor_playback(
                 PlaybackEvent::Resumed => println!("{}", "▶️ Resumed".green()),
                 PlaybackEvent::Started => println!("{}", "▶️ Playback started".cyan()),
                 PlaybackEvent::Position(p) => {
-                    println!("⏱ {:.1}% played", p);
-
                     if p > 96.0 && !has_reached_completion {
                         has_reached_completion = true;
                         println!("{}", "Reached 95% completion".red());
