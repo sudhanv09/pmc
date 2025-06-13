@@ -1,11 +1,9 @@
-use crate::cli::{
-    App, Commands, handle_list_command, handle_play_command, handle_recent_command,
-    handle_resume_command,
-};
+use crate::cli::App;
 use crate::library::load_or_configure_library;
 use clap::Parser;
 
 mod cli;
+mod commands;
 mod db;
 mod indexer;
 mod library;
@@ -25,19 +23,10 @@ async fn main() -> tokio::io::Result<()> {
         .unwrap();
 
     let cli = App::parse();
-    let result = match &cli.command {
-        Commands::List => handle_list_command(&index).await,
-        Commands::Recent => handle_recent_command(&index).await,
-
-        Commands::Play => handle_play_command(&index).await,
-        Commands::Resume => handle_resume_command(&index).await,
-    };
-
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
-        // exit with a non-zero code here
-        std::process::exit(1);
-    }
+    cli.command
+        .execute(&index)
+        .await
+        .expect("Something went wrong");
 
     Ok(())
 }
