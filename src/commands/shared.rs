@@ -116,6 +116,10 @@ pub async fn monitor_playback(
                     println!("{}", "🛑 Playback stopped".red());
                     break;
                 }
+                PlaybackEvent::Exited => {
+                    println!("{}", "🛑 MPV has exited, terminating application".red());
+                    std::process::exit(0);
+                }
                 PlaybackEvent::Error(e) => {
                     eprintln!("❌ Playback error: {}", e);
                     break;

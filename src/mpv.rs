@@ -242,7 +242,7 @@ impl Player {
             match self.reader.read_line(&mut line).await {
                 Ok(0) => {
                     println!("MPV has exited.");
-                    let _ = tx.send(PlaybackEvent::Stopped);
+                    let _ = tx.send(PlaybackEvent::Exited);
                     let mut state_guard = state.lock().unwrap();
                     state_guard.stop_playback();
                     break;

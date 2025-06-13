@@ -46,6 +46,7 @@ pub enum PlaybackEvent {
     Resumed,
     Position(f64),
     Completed,
+    Exited,
     Error(String),
 }
 
