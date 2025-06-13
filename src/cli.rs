@@ -1,16 +1,17 @@
 #![allow(warnings)]
 
+use crate::db;
 use crate::db::Db;
 use crate::indexer::{Episode, Tv};
-use crate::library::{MediaLibrary, MediaType, PlaybackState, SharedState, WatchEntry};
+use crate::library::{MediaLibrary, MediaType, PlaybackEvent, PlaybackState, SharedState, WatchEntry};
 use crate::mpv::{Player, spawn_mpv};
-use crate::{db};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration};
+use tokio::sync::mpsc;
+use tokio::time::{Duration, sleep};
 
 #[derive(Parser)]
 #[command(name = "pmc")]
@@ -102,49 +103,14 @@ pub async fn handle_resume_command(index: &MediaLibrary) -> Result<(), Box<dyn s
     let recent = db.get_recent_watches(10).await?;
 
     // Filter for incomplete items
-    let mut incomplete: Vec<_> = recent.into_iter()
-        .filter(|entry| !entry.complete)
-        .collect();
+    let mut incomplete: Vec<_> = recent.into_iter().filter(|entry| !entry.complete).collect();
 
     if incomplete.is_empty() {
         println!("No incomplete watches to resume.");
         return Ok(());
     }
-
-    // Prompt user to select an item to resume
-    let items: Vec<String> = incomplete.iter().map(|entry| {
-        match entry.media_type {
-            MediaType::Movie => {
-                if let Some(movie) = index.library.movies.iter().find(|m| m.id == entry.media_id) {
-                    format!("Movie: {} ({}%)", movie.name, entry.progress)
-                } else {
-                    format!("Movie: {} (not found)", entry.media_id)
-                }
-            }
-            MediaType::Show => {
-                if let Some((show, season, episode)) = index.episode_map.get(&entry.media_id) {
-                    format!(
-                        "Show: {} S{} E{} - ({}%)",
-                        show.name,
-                        season.number,
-                        episode.name,
-                        entry.progress
-                    )
-                } else {
-                    format!("Show: {} (not found)", entry.media_id)
-                }
-            }
-        }
-    }).collect();
-
-
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Resume what?")
-        .items(&items)
-        .interact()
-        .unwrap();
-
-    let to_resume = &incomplete[selection];
+    
+    let to_resume = &incomplete[0];
     let state: SharedState = Arc::new(Mutex::new(PlaybackState::new()));
     let socket_path = "/tmp/pmc-resume.sock";
 
@@ -153,9 +119,16 @@ pub async fn handle_resume_command(index: &MediaLibrary) -> Result<(), Box<dyn s
     sleep(Duration::from_millis(300)).await; // wait for socket
 
     let mut player = Player::init(socket_path).await?;
+    let (tx, mut rx) = mpsc::channel::<PlaybackEvent>(16);
+    
     match to_resume.media_type {
         MediaType::Movie => {
-            if let Some(movie) = index.library.movies.iter().find(|m| m.id == to_resume.media_id) {
+            if let Some(movie) = index
+                .library
+                .movies
+                .iter()
+                .find(|m| m.id == to_resume.media_id)
+            {
                 {
                     let mut guard = state.lock().unwrap();
                     guard.start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie);
@@ -163,31 +136,51 @@ pub async fn handle_resume_command(index: &MediaLibrary) -> Result<(), Box<dyn s
 
                 println!("Resuming movie: {}", movie.name);
                 player.play_file(movie.path.clone()).await?;
-                player.start_monitoring(state.clone()).await?;
-                db.save_playback_progress(state).await?;
+                let monitor_state = state.clone();
+                tokio::spawn(async move {
+                    let _ = player.start_monitoring(monitor_state, tx);
+                });
             }
         }
         MediaType::Show => {
             if let Some((_, _, episode)) = index.episode_map.get(&to_resume.media_id) {
                 {
                     let mut guard = state.lock().unwrap();
-                    guard.start_playback(
-                        episode.id.clone(),
-                        episode.path.clone(),
-                        MediaType::Show,
-                    );
+                    guard.start_playback(episode.id.clone(), episode.path.clone(), MediaType::Show);
                 }
 
                 println!("Resuming episode: {}", episode.name);
                 player.play_file(episode.path.clone()).await?;
-                player.start_monitoring(state.clone()).await?;
-                db.save_playback_progress(state).await?;
+                let monitor_state = state.clone();
+                tokio::spawn(async move {
+                    let _ = player.start_monitoring(monitor_state, tx);
+                });
+            }
+        }
+    }
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            PlaybackEvent::Paused => println!("{}", "⏸ Paused".yellow()),
+            PlaybackEvent::Resumed => println!("{}", "▶️ Resumed".green()),
+            PlaybackEvent::Started => println!("{}", "▶️ Playback started".cyan()),
+            PlaybackEvent::Position(p) => println!("⏱ {:.1}% played", p),
+            PlaybackEvent::Completed => {
+                println!("{}", "✅ Playback complete".blue());
+                break;
+            }
+            PlaybackEvent::Stopped => {
+                println!("{}", "🛑 Playback stopped".red());
+                break;
+            }
+            PlaybackEvent::Error(e) => {
+                eprintln!("❌ Playback error: {}", e);
+                break;
             }
         }
     }
 
     Ok(())
-
 }
 
 pub async fn handle_play_command(index: &MediaLibrary) -> Result<(), Box<dyn std::error::Error>> {
@@ -234,9 +227,10 @@ async fn handle_movie_playback(
 
     let movie = &index.library.movies[choice];
 
-    let mut state_guard = state.lock().unwrap();
-    state_guard.start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie);
-    drop(state_guard);
+    {
+        let mut state_guard = state.lock().unwrap();
+        state_guard.start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie);
+    }
 
     println!("{}", "Spawning mpv".yellow());
     let socket_path = "/tmp/pmc-mpv.sock";
@@ -247,13 +241,44 @@ async fn handle_movie_playback(
 
     let mut mpv = Player::init(socket_path).await?;
     mpv.play_file(movie.path.clone()).await?;
-    let monitor_result = mpv.start_monitoring(state.clone()).await?;
 
+    // Spawn MPV monitor task
+    let (tx, mut rx) = mpsc::channel::<PlaybackEvent>(16);
+    let monitor_state = state.clone();
+    tokio::spawn(async move {
+        let _ = mpv.start_monitoring(monitor_state, tx);
+    });
+
+    // Listen for events
+    while let Some(event) = rx.recv().await {
+        match event {
+            PlaybackEvent::Paused => println!("{}", "Paused".yellow()),
+            PlaybackEvent::Resumed => println!("{}", "Resumed".green()),
+            PlaybackEvent::Position(pos) => {
+                println!("Progress: {:.1}%", pos);
+            }
+            PlaybackEvent::Completed => {
+                println!("{}", "Playback complete!".blue());
+                break;
+            }
+            PlaybackEvent::Stopped => {
+                println!("{}", "Playback stopped.".red());
+                break;
+            }
+            PlaybackEvent::Error(e) => {
+                eprintln!("MPV error: {}", e);
+                break;
+            }
+            PlaybackEvent::Started => {
+                println!("{}", "Playback started.".green());
+            }
+        }
+    }
     if let Err(e) = db.save_playback_progress(state.clone()).await {
         println!("Failed to save progress: {}", e);
     }
 
-    Ok(monitor_result)
+    Ok(())
 }
 
 pub fn flatten_show(show: &Tv) -> Vec<Episode> {
@@ -307,17 +332,47 @@ async fn handle_show_playback(
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         println!("{}", "Mpv running".green());
         println!("Now playing: {}", episode.name);
-        
 
         let mut mpv = Player::init(socket_path).await?;
         mpv.play_file(episode.path.clone()).await?;
-        let result = mpv.start_monitoring(state.clone()).await?;
+        
+        // Spawn MPV monitor task
+        let (tx, mut rx) = mpsc::channel::<PlaybackEvent>(16);
+        let monitor_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mpv.start_monitoring(monitor_state, tx);
+        });
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                PlaybackEvent::Paused => println!("{}", "Paused".yellow()),
+                PlaybackEvent::Resumed => println!("{}", "Resumed".green()),
+                PlaybackEvent::Position(pos) => {
+                    println!("Progress: {:.1}%", pos);
+                }
+                PlaybackEvent::Completed => {
+                    println!("{}", "Playback complete!".blue());
+                    break;
+                }
+                PlaybackEvent::Stopped => {
+                    println!("{}", "Playback stopped.".red());
+                    break;
+                }
+                PlaybackEvent::Error(e) => {
+                    eprintln!("MPV error: {}", e);
+                    break;
+                }
+                PlaybackEvent::Started => {
+                    println!("{}", "Playback started.".green());
+                }
+            }
+        }
 
         if let Err(e) = db.save_playback_progress(state.clone()).await {
             println!("Failed to save progress: {}", e);
         }
 
-        Ok(result)
+        Ok(())
     } else {
         println!("Nothing to play.");
         Ok(())
