@@ -150,12 +150,10 @@ impl Db {
         }
 
         let media_id = state_guard.media_id.as_ref().unwrap();
-        let percent_pos = state_guard.percent_pos.unwrap();
         let media_type = state_guard.media_type.as_ref().unwrap();
 
-        // Consider complete if > 90%
-        let complete = percent_pos > 90.0;
-        let progress = percent_pos as i16;
+        let progress = state_guard.completion_percentage();
+        let is_completed = state_guard.is_completed();
 
         println!("Saving progress: {}% for media {}", progress, media_id);
 
@@ -163,8 +161,8 @@ impl Db {
             id: nanoid!(),
             media_id: media_id.clone(),
             media_type: media_type.clone(),
-            progress,
-            complete,
+            progress: (progress as i16),
+            complete: is_completed,
             watched_at: Local::now(),
         };
 

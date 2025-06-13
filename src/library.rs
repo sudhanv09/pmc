@@ -38,6 +38,22 @@ pub struct PlaybackState {
     pub should_stop: bool, // For graceful shutdown
 }
 
+#[derive(Debug)]
+pub enum PlaybackEvent {
+    Started,
+    Stopped,
+    Paused,
+    Resumed,
+    Position(f64),
+    Completed,
+    Error(String),
+}
+
+pub struct ShowPlaybackSession {
+    pub episodes: Vec<Episode>,
+    pub current_index: usize,
+}
+
 pub type SharedState = Arc<Mutex<PlaybackState>>;
 
 impl PlaybackState {
@@ -52,7 +68,7 @@ impl PlaybackState {
         }
     }
 
-    pub fn start_playback(&mut self, media_id: String, file_path: PathBuf, media_type: MediaType) {
+    pub fn init(&mut self, media_id: String, file_path: PathBuf, media_type: MediaType) {
         self.media_id = Some(media_id);
         self.file_path = Some(file_path);
         self.media_type = Some(media_type);
@@ -70,6 +86,20 @@ impl PlaybackState {
 
     pub fn should_save_progress(&self) -> bool {
         self.media_id.is_some() && self.percent_pos.is_some()
+    }
+    
+    pub fn mark_completed(&mut self) {
+        self.percent_pos = Some(100.0);
+        self.is_playing = false;
+    }
+
+    // Helpers
+    pub fn is_completed(&self) -> bool {
+        self.percent_pos.map_or(false, |pos| pos > 96.0)
+    }
+
+    pub fn completion_percentage(&self) -> f64 {
+        self.percent_pos.unwrap_or(0.0)
     }
 }
 
