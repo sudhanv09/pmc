@@ -47,7 +47,7 @@ async fn play_movie(
     let (state, rx) =
         start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie).await?;
 
-    monitor_playback(rx, MediaType::Movie, movie.id.clone(), index).await?;
+    monitor_playback(rx, MediaType::Movie, movie.id.clone(), index, state.clone()).await?;
     db.save_playback_progress(state).await.unwrap();
 
     Ok(())
@@ -82,8 +82,10 @@ async fn play_show(
         let (state, rx) =
             start_playback(episode.id.clone(), episode.path.clone(), MediaType::Show).await?;
 
-        match monitor_playback(rx, MediaType::Show, episode.id.clone(), index).await? {
-            PlaybackOutcome::Complete => {},
+        match monitor_playback(rx, MediaType::Show, episode.id.clone(), index, state.clone()).await? {
+            PlaybackOutcome::Complete => {
+                println!("Show complete");
+            },
             PlaybackOutcome::Continue(episode) => {
                 let current_episode = episodes.iter().find(|e| e.id == episode);
                 if current_episode.is_none() {

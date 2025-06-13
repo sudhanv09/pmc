@@ -2,7 +2,6 @@
 
 use crate::library::{MediaType, SharedState, WatchEntry};
 use chrono::{DateTime, Local};
-use colored::Colorize;
 use nanoid::nanoid;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool, sqlite::SqlitePoolOptions};

@@ -22,25 +22,25 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
         MediaType::Movie => {
             if let Some(movie) = index.library.movies.iter().find(|m| m.id == to_resume.media_id) {
                 println!("Resuming movie: {}", movie.name);
-                let (_, rx) = start_playback(
+                let (state, rx) = start_playback(
                     movie.id.clone(),
                     movie.path.clone(),
                     MediaType::Movie,
                 )
                     .await?;
-                monitor_playback(rx, MediaType::Movie, movie.id.clone(), index).await?;
+                monitor_playback(rx, MediaType::Movie, movie.id.clone(), index, state).await?;
             }
         }
         MediaType::Show => {
             if let Some((_, _, episode)) = index.episode_map.get(&to_resume.media_id) {
                 println!("Resuming episode: {}", episode.name);
-                let (_, rx) = start_playback(
+                let (state, rx) = start_playback(
                     episode.id.clone(),
                     episode.path.clone(),
                     MediaType::Show,
                 )
                     .await?;
-                monitor_playback(rx, MediaType::Show, episode.id.clone(), index).await?;
+                monitor_playback(rx, MediaType::Show, episode.id.clone(), index, state).await?;
             }
         }
     }
