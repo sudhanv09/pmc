@@ -1,6 +1,7 @@
 use crate::library::SharedState;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::process::{Child, Command, Stdio};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf, split};
 use tokio::net::UnixStream;
 use tokio::time::{Duration, sleep};
@@ -310,4 +311,18 @@ impl Player {
 
         Ok(())
     }
+}
+
+pub fn spawn_mpv(socket_path: &str) -> std::io::Result<Child> {
+    let child = Command::new("mpv")
+        .arg("--idle")
+        .arg("--force-window")
+        .arg("--no-terminal")
+        .arg(format!("--input-ipc-server={}", socket_path))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    Ok(child)
+
 }
