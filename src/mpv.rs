@@ -152,6 +152,11 @@ impl Player {
         true // Should never reach here
     }
 
+    pub async fn stop(&mut self) -> tokio::io::Result<()> {
+        self.send_command(vec!["stop".into()]).await?;
+        Ok(())
+    }
+
     pub async fn start_monitoring(
         player: &Arc<Mutex<Player>>,
         state: SharedState,
@@ -240,9 +245,11 @@ impl Player {
                                             if let Some(pos) =
                                                 prop_change.data.and_then(|d| d.as_f64())
                                             {
-                                                let _ = tx.send(PlaybackEvent::Position(pos));
                                                 let mut state_guard = state.lock().await;
-                                                state_guard.update_position(pos);
+                                                if let Some(media_id) = state_guard.media_id.clone() {
+                                                    let _ = tx.send(PlaybackEvent::Position(pos, media_id));
+                                                    state_guard.update_position(pos);
+                                                }
                                             }
                                         }
                                         "eof-reached" => {

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 
 type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -57,6 +57,65 @@ pub async fn start_playback(
     Ok((state, rx))
 }
 
+async fn play_next(
+    current_media_id: &mut String,
+    current_media_type: MediaType,
+    index: &MediaLibrary,
+    state: SharedState,
+    db: &Db,
+    player: Arc<Mutex<Player>>,
+    has_reached_completion: &mut bool,
+) -> Result<bool> {
+    if current_media_type == MediaType::Show {
+        if let Some((show, _, _)) = index.episode_map.get(current_media_id) {
+            let episodes = flatten_show(show);
+            if let Some(next_episode) = get_next_episode(&current_media_id, &episodes) {
+                println!(
+                    "{}",
+                    format!("Playing next episode: {}", next_episode.name).blue()
+                );
+                *current_media_id = next_episode.id.clone();
+                *has_reached_completion = false;
+
+                {
+                    let mut state_guard = state.lock().await;
+                    state_guard.init(
+                        next_episode.id.clone(),
+                        next_episode.path.clone(),
+                        MediaType::Show,
+                    );
+                    state_guard.percent_pos = None;
+                }
+
+
+                {
+                    let mut player_guard = player.lock().await;
+                    if let Err(e) = player_guard.stop().await {
+                        eprintln!("Failed to stop player: {}", e);
+                    }
+                }
+                
+                sleep(Duration::from_millis(1000)).await;
+                
+                {
+                    let mut player_guard = player.lock().await;
+                    if let Err(e) = player_guard.play_file(&next_episode.path).await {
+                        eprintln!("Failed to load next file: {}", e);
+                    }
+                }
+
+                // Save progress for previous episode
+                db.save_playback_progress(state.clone()).await;
+                return Ok(true);
+            } else {
+                println!("{}", "No more episodes in this season".yellow());
+                return Ok(false);
+            }
+        }
+    }
+    Ok(false)
+}
+
 pub async fn monitor_playback(
     mut rx: UnboundedReceiver<PlaybackEvent>,
     media_type: MediaType,
@@ -79,68 +138,56 @@ pub async fn monitor_playback(
                     println!("{}", "▶️ Playback started".cyan());
                     has_reached_completion = false;
                 }
-                PlaybackEvent::Position(p) => {
+                PlaybackEvent::Position(p, event_media_id) => {
+                    if event_media_id != current_media_id {
+                        println!("Skipping event for media_id: {} (current: {})", event_media_id, current_media_id);
+                        continue;
+                    }
                     {
                         let mut state_guard = state.lock().await;
                         state_guard.update_position(p);
                     }
-                    
-                    if p > 98.0 && !has_reached_completion {
+
+                    if p > 98.0
+                        && !has_reached_completion
+                        && state.lock().await.media_id.as_ref() == Some(&current_media_id)
+                    {
                         has_reached_completion = true;
-                        println!("{}", "Reached 95% completion".cyan());
+                        println!("{}", "Reached 98% completion".cyan());
                         {
                             let mut state_guard = state.lock().await;
                             state_guard.mark_completed();
-                        }
-
-                        if current_media_type == MediaType::Show {
-                            if let Some((show, _, _)) = index.episode_map.get(&current_media_id) {
-                                let episodes = flatten_show(show);
-                                if let Some(next_episode) =
-                                    get_next_episode(&current_media_id, &episodes)
-                                {
-                                    println!(
-                                        "{}",
-                                        format!("Playing next episode: {}", next_episode.name)
-                                            .blue()
-                                    );
-                                    current_media_id = next_episode.id.clone();
-                                    has_reached_completion = false;
-
-                                    {
-                                        let mut state_guard = state.lock().await;
-                                        state_guard.init(
-                                            next_episode.id.clone(),
-                                            next_episode.path.clone(),
-                                            MediaType::Show,
-                                        );
-                                    }
-
-                                    sleep(Duration::from_millis(300)).await;
-
-                                    {
-                                        let mut player_guard = player.lock().await;
-                                        if let Err(e) =
-                                            player_guard.play_file(&next_episode.path).await
-                                        {
-                                            eprintln!("Failed to load next file: {}", e);
-                                        }
-                                    }
-
-                                    // Save progress for previous episode
-                                    db.save_playback_progress(state.clone()).await;
-                                    break;
-                                } else {
-                                    println!("{}", "No more episodes in this season".yellow());
-                                    return Ok(());
-                                }
-                            }
                         }
 
                         println!("{}", "Saving to db".cyan());
                         db.save_playback_progress(state.clone())
                             .await
                             .expect("Could not save playback progress");
+
+                        // Drain queue to clear stale events
+                        let drain_timeout = timeout(Duration::from_millis(500), async {
+                            while rx.try_recv().is_ok() {}
+                        });
+                        if let Err(e) = drain_timeout.await {
+                            println!("Queue drain timed out: {}", e);
+                        }
+
+                        // Play next episode
+                        if play_next(
+                            &mut current_media_id,
+                            current_media_type.clone(),
+                            index,
+                            state.clone(),
+                            db,
+                            player.clone(),
+                            &mut has_reached_completion,
+                        )
+                        .await?
+                        {
+                            continue; // Continue to process events for the new episode
+                        } else {
+                            return Ok(());
+                        }
                     }
                 }
                 PlaybackEvent::Completed => {
