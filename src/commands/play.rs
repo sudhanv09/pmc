@@ -1,9 +1,13 @@
-use crate::commands::shared::{flatten_show, monitor_playback, start_playback, PlaybackOutcome};
+use crate::commands::shared::{flatten_show, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
+use crate::mpv::{Player, spawn_mpv};
 use anyhow::Result;
-use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
+use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
+use tokio::sync::Mutex;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let db = db::Db::get();
@@ -21,10 +25,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
     }
 }
 
-async fn play_movie(
-    index: &MediaLibrary,
-    db: &db::Db,
-) -> Result<()> {
+async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
     if index.library.movies.is_empty() {
         println!("No movies found");
         return Ok(());
@@ -44,19 +45,36 @@ async fn play_movie(
     let movie = &index.library.movies[choice];
     println!("Now playing movie: {}", movie.name);
 
-    let (state, rx) =
-        start_playback(movie.id.clone(), movie.path.clone(), MediaType::Movie).await?;
+    let socket_name = "/tmp/pmc-mpv.sock";
+    spawn_mpv(socket_name).expect("Failed to spawn MPV");
+    sleep(Duration::from_secs(1));
 
-    monitor_playback(rx, MediaType::Movie, movie.id.clone(), index, state.clone()).await?;
+    let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
+
+    let (state, rx) = start_playback(
+        movie.id.clone(),
+        movie.path.clone(),
+        MediaType::Movie,
+        player.clone(),
+    )
+    .await?;
+
+    monitor_playback(
+        rx,
+        MediaType::Movie,
+        movie.id.clone(),
+        index,
+        state.clone(),
+        db,
+        player.clone(),
+    )
+    .await?;
     db.save_playback_progress(state).await.unwrap();
 
     Ok(())
 }
 
-async fn play_show(
-    index: &MediaLibrary,
-    db: &db::Db,
-) -> Result<()> {
+async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
     if index.library.shows.is_empty() {
         println!("No TV shows found.");
         return Ok(());
@@ -79,20 +97,31 @@ async fn play_show(
 
     if let Some(episode) = select_episode_to_play(&episodes, &history) {
         println!("Now playing: {}", episode.name);
-        let (state, rx) =
-            start_playback(episode.id.clone(), episode.path.clone(), MediaType::Show).await?;
 
-        match monitor_playback(rx, MediaType::Show, episode.id.clone(), index, state.clone()).await? {
-            PlaybackOutcome::Complete => {
-                println!("Show complete");
-            },
-            PlaybackOutcome::Continue(episode) => {
-                let current_episode = episodes.iter().find(|e| e.id == episode);
-                if current_episode.is_none() {
-                    println!("{}", "No more episodes in this season".yellow());
-                }
-            }
-        }
+        let socket_name = "/tmp/pmc-mpv.sock";
+        spawn_mpv(socket_name).expect("Failed to spawn MPV");
+        sleep(Duration::from_secs(1));
+
+        let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
+
+        let (state, rx) = start_playback(
+            episode.id.clone(),
+            episode.path.clone(),
+            MediaType::Show,
+            player.clone(),
+        )
+        .await?;
+
+        monitor_playback(
+            rx,
+            MediaType::Show,
+            episode.id.clone(),
+            index,
+            state.clone(),
+            db,
+            player.clone(),
+        )
+        .await?;
         db.save_playback_progress(state).await.unwrap();
     } else {
         println!("Nothing to play.");
