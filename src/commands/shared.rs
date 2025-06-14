@@ -62,7 +62,6 @@ async fn play_next(
     current_media_type: MediaType,
     index: &MediaLibrary,
     state: SharedState,
-    db: &Db,
     player: Arc<Mutex<Player>>,
     has_reached_completion: &mut bool,
 ) -> Result<bool> {
@@ -74,7 +73,6 @@ async fn play_next(
                     "{}",
                     format!("Playing next episode: {}", next_episode.name).blue()
                 );
-                *current_media_id = next_episode.id.clone();
                 *has_reached_completion = false;
 
                 {
@@ -87,16 +85,15 @@ async fn play_next(
                     state_guard.percent_pos = None;
                 }
 
-
                 {
                     let mut player_guard = player.lock().await;
                     if let Err(e) = player_guard.stop().await {
                         eprintln!("Failed to stop player: {}", e);
                     }
                 }
-                
+
                 sleep(Duration::from_millis(1000)).await;
-                
+
                 {
                     let mut player_guard = player.lock().await;
                     if let Err(e) = player_guard.play_file(&next_episode.path).await {
@@ -104,8 +101,7 @@ async fn play_next(
                     }
                 }
 
-                // Save progress for previous episode
-                db.save_playback_progress(state.clone()).await;
+                *current_media_id = next_episode.id.clone();
                 return Ok(true);
             } else {
                 println!("{}", "No more episodes in this season".yellow());
@@ -140,7 +136,10 @@ pub async fn monitor_playback(
                 }
                 PlaybackEvent::Position(p, event_media_id) => {
                     if event_media_id != current_media_id {
-                        println!("Skipping event for media_id: {} (current: {})", event_media_id, current_media_id);
+                        println!(
+                            "Skipping event for media_id: {} (current: {})",
+                            event_media_id, current_media_id
+                        );
                         continue;
                     }
                     {
@@ -178,7 +177,6 @@ pub async fn monitor_playback(
                             current_media_type.clone(),
                             index,
                             state.clone(),
-                            db,
                             player.clone(),
                             &mut has_reached_completion,
                         )
