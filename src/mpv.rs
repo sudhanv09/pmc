@@ -2,9 +2,11 @@ use crate::library::{PlaybackEvent, SharedState};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf, split};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 use tokio::time::{Duration, sleep};
 
 #[derive(Debug, Serialize)]
@@ -117,25 +119,20 @@ impl Player {
 
     pub async fn play_file<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
         let path_str = path.as_ref().to_string_lossy();
-        let response = self
+        self
             .send_command(vec![
                 "loadfile".into(),
                 path_str.into_owned(),
                 "replace".into(),
             ])
             .await?;
-        if response.error != "success" {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to load file: {}", response.error),
-            ));
-        }
+
         Ok(())
     }
 
     async fn wait_mpv(&mut self) -> bool {
         let max_init_attempts = 30; // 30 seconds max wait
-    
+
         for attempt in 0..max_init_attempts {
             if let Ok(response) = self.get_property("playback-time").await {
                 if response.data.is_some() {
@@ -143,67 +140,68 @@ impl Player {
                     return false; // Success
                 }
             }
-    
+
             if attempt == max_init_attempts - 1 {
                 println!("Timeout waiting for playback to start");
                 return true; // Timeout
             }
-    
+
             sleep(Duration::from_secs(1)).await;
         }
-    
+
         true // Should never reach here
     }
 
     pub async fn start_monitoring(
-        &mut self,
+        player: &Arc<Mutex<Player>>,
         state: SharedState,
         tx: UnboundedSender<PlaybackEvent>,
     ) {
         println!("Starting playback monitoring...");
-        
-        if self.wait_mpv().await {
-            println!("Timed out");
-            return
-        }
 
-        // Set up property observation
-        if let Err(e) = self.observe_property("pause", 1).await {
-            println!("Failed to observe pause property: {}", e);
-            let _ = tx.send(PlaybackEvent::Error(format!(
-                "Failed to observe pause: {}",
-                e
-            )));
-            return;
-        }
+        {
+            let mut player_guard = player.lock().await;
+            if player_guard.wait_mpv().await {
+                println!("Timed out");
+                return;
+            }
 
-        if let Err(e) = self.observe_property("percent-pos", 2).await {
-            println!("Failed to observe percent-pos property: {}", e);
-            let _ = tx.send(PlaybackEvent::Error(format!(
-                "Failed to observe percent-pos: {}",
-                e
-            )));
-            return;
-        }
+            // Set up property observation
+            if let Err(e) = player_guard.observe_property("pause", 1).await {
+                println!("Failed to observe pause property: {}", e);
+                let _ = tx.send(PlaybackEvent::Error(format!(
+                    "Failed to observe pause: {}",
+                    e
+                )));
+                return;
+            }
 
-        if let Err(e) = self.observe_property("eof-reached", 3).await {
-            println!("Failed to observe eof-reached property: {}", e);
-            let _ = tx.send(PlaybackEvent::Error(format!(
-                "Failed to observe eof-reached: {}",
-                e
-            )));
-            return;
-        }
+            if let Err(e) = player_guard.observe_property("percent-pos", 2).await {
+                println!("Failed to observe percent-pos property: {}", e);
+                let _ = tx.send(PlaybackEvent::Error(format!(
+                    "Failed to observe percent-pos: {}",
+                    e
+                )));
+                return;
+            }
 
-        // Wait a moment for MPV to initialize
-        sleep(Duration::from_millis(500)).await;
+            if let Err(e) = player_guard.observe_property("eof-reached", 3).await {
+                println!("Failed to observe eof-reached property: {}", e);
+                let _ = tx.send(PlaybackEvent::Error(format!(
+                    "Failed to observe eof-reached: {}",
+                    e
+                )));
+                return;
+            }
+        }
 
         // Send initial started event
         let _ = tx.send(PlaybackEvent::Started);
 
         loop {
+            let mut player_guard = player.lock().await;
             let mut line = String::new();
-            match self.reader.read_line(&mut line).await {
+            match player_guard.reader.read_line(&mut line).await {
                 Ok(0) => {
                     println!("MPV has exited.");
                     let _ = tx.send(PlaybackEvent::Exited);
@@ -294,14 +292,11 @@ impl Player {
                                 state_guard.stop_playback();
                                 break; // Exit the loop
                             }
-                            "playback-restart" => {
-                                println!("Playback restarted");
-                                let _ = tx.send(PlaybackEvent::Started);
-                            }
                             _ => {}
                         }
                     }
-                } Err(e) => {
+                }
+                Err(e) => {
                     println!("Error reading from MPV socket: {}", e);
                     let _ = tx.send(PlaybackEvent::Error(format!("Socket read error: {}", e)));
                     break;

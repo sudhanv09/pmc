@@ -136,7 +136,7 @@ fn select_episode_to_play<'a>(
 ) -> Option<&'a crate::indexer::Episode> {
     let last = history
         .iter()
-        .filter(|entry| entry.media_type == crate::library::MediaType::Show)
+        .filter(|entry| entry.media_type == MediaType::Show)
         .max_by_key(|entry| entry.watched_at);
 
     match last {
