@@ -142,7 +142,7 @@ impl Db {
     }
 
     pub async fn save_playback_progress(&self, state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
-        let state_guard = state.lock().unwrap();
+        let state_guard = state.lock().await;
 
         if !state_guard.should_save_progress() {
             return Ok(());

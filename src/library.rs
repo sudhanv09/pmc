@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MediaType {

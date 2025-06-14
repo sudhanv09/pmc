@@ -133,42 +133,6 @@ impl Player {
         Ok(())
     }
 
-    pub async fn get_percent_pos(&mut self) -> tokio::io::Result<Option<f64>> {
-        let response = self.get_property("percent-pos").await?;
-        if response.error != "success" {
-            println!("Error getting percent-pos: {}", response.error);
-            return Ok(None);
-        }
-        Ok(response.data.and_then(|data| data.as_f64()))
-    }
-
-    pub async fn paused(&mut self) -> tokio::io::Result<Option<bool>> {
-        let response = self.get_property("pause").await?;
-        if response.error != "success" {
-            println!("Error getting pause state: {}", response.error);
-            return Ok(None);
-        }
-        Ok(response.data.and_then(|data| data.as_bool()))
-    }
-
-    pub async fn running(&mut self) -> bool {
-        // Check if we can send a simple command to verify MPV is responsive
-        self.get_property("pause").await.is_ok()
-    }
-
-    // New: Check if playback has ended
-    pub async fn has_ended(&mut self) -> tokio::io::Result<bool> {
-        let response = self.get_property("eof-reached").await?;
-        if response.error != "success" {
-            println!("Error getting eof-reached: {}", response.error);
-            return Ok(false);
-        }
-        Ok(response
-            .data
-            .and_then(|data| data.as_bool())
-            .unwrap_or(false))
-    }
-
     async fn wait_mpv(&mut self) -> bool {
         let max_init_attempts = 30; // 30 seconds max wait
     
@@ -243,7 +207,7 @@ impl Player {
                 Ok(0) => {
                     println!("MPV has exited.");
                     let _ = tx.send(PlaybackEvent::Exited);
-                    let mut state_guard = state.lock().unwrap();
+                    let mut state_guard = state.lock().await;
                     state_guard.stop_playback();
                     break;
                 }
@@ -270,7 +234,7 @@ impl Player {
                                                     PlaybackEvent::Resumed
                                                 };
                                                 let _ = tx.send(event);
-                                                let mut state_guard = state.lock().unwrap();
+                                                let mut state_guard = state.lock().await;
                                                 state_guard.is_playing = !is_paused;
                                             }
                                         }
@@ -279,7 +243,7 @@ impl Player {
                                                 prop_change.data.and_then(|d| d.as_f64())
                                             {
                                                 let _ = tx.send(PlaybackEvent::Position(pos));
-                                                let mut state_guard = state.lock().unwrap();
+                                                let mut state_guard = state.lock().await;
                                                 state_guard.update_position(pos);
                                             }
                                         }
@@ -290,7 +254,7 @@ impl Player {
                                                 if eof {
                                                     println!("EOF reached via property change");
                                                     let _ = tx.send(PlaybackEvent::Completed);
-                                                    let mut state_guard = state.lock().unwrap();
+                                                    let mut state_guard = state.lock().await;
                                                     state_guard.stop_playback();
                                                 }
                                             }
@@ -306,12 +270,12 @@ impl Player {
                                     match end_event.reason.as_str() {
                                         "eof" => {
                                             let _ = tx.send(PlaybackEvent::Completed);
-                                            let mut state_guard = state.lock().unwrap();
+                                            let mut state_guard = state.lock().await;
                                             state_guard.stop_playback();
                                         }
                                         "stop" | "quit" => {
                                             let _ = tx.send(PlaybackEvent::Stopped);
-                                            let mut state_guard = state.lock().unwrap();
+                                            let mut state_guard = state.lock().await;
                                             state_guard.stop_playback();
                                         }
                                         _ => {
@@ -326,7 +290,7 @@ impl Player {
                             "shutdown" => {
                                 println!("MPV is shutting down.");
                                 let _ = tx.send(PlaybackEvent::Stopped);
-                                let mut state_guard = state.lock().unwrap();
+                                let mut state_guard = state.lock().await;
                                 state_guard.stop_playback();
                                 break; // Exit the loop
                             }
