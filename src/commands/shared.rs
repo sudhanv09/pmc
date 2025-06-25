@@ -68,7 +68,7 @@ async fn play_next(
     if current_media_type == MediaType::Show {
         if let Some((show, _, _)) = index.episode_map.get(current_media_id) {
             let episodes = flatten_show(show);
-            if let Some(next_episode) = get_next_episode(&current_media_id, &episodes) {
+            if let Some(next_episode) = get_next_episode(current_media_id, &episodes) {
                 println!(
                     "{}",
                     format!("Playing next episode: {}", next_episode.name).blue()
