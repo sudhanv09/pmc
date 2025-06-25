@@ -56,6 +56,7 @@ async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
         movie.path.clone(),
         MediaType::Movie,
         player.clone(),
+        None,
     )
     .await?;
 
@@ -69,9 +70,10 @@ async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
         player.clone(),
     )
     .await?;
-    let (media_id, media_type, progress, is_completed) =
-        acquire_get_state(&state).await;
-    db.save_playback_progress(media_id, media_type, progress, is_completed).await.unwrap();
+    let (media_id, media_type, progress, is_completed) = acquire_get_state(&state).await;
+    db.save_playback_progress(media_id, media_type, progress, is_completed)
+        .await
+        .unwrap();
 
     Ok(())
 }
@@ -111,6 +113,7 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
             episode.path.clone(),
             MediaType::Show,
             player.clone(),
+            None,
         )
         .await?;
 
@@ -124,9 +127,10 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
             player.clone(),
         )
         .await?;
-        let (media_id, media_type, progress, is_completed) =
-            acquire_get_state(&state).await;
-        db.save_playback_progress(media_id, media_type, progress, is_completed).await.unwrap();
+        let (media_id, media_type, progress, is_completed) = acquire_get_state(&state).await;
+        db.save_playback_progress(media_id, media_type, progress, is_completed)
+            .await
+            .unwrap();
     } else {
         println!("Nothing to play.");
     }

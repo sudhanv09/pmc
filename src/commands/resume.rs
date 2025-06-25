@@ -34,6 +34,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
                         movie.path.clone(),
                         MediaType::Movie,
                         player.clone(),
+                        Some(to_resume.progress as f64),
                     )
                     .await?;
                     monitor_playback(
@@ -56,6 +57,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
                         episode.path.clone(),
                         MediaType::Show,
                         player.clone(),
+                        Some(to_resume.progress as f64),
                     )
                     .await?;
                     monitor_playback(
@@ -82,6 +84,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
                         next_episode.path.clone(),
                         MediaType::Show,
                         player.clone(),
+                        None
                     )
                     .await?;
                     monitor_playback(

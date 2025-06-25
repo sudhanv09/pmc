@@ -93,7 +93,7 @@ impl Player {
             if let Ok(resp) = serde_json::from_str::<MpvResponse>(&response) {
                 if resp.request_id == Some(request_id) {
                     if resp.error != "success" {
-                        println!("MPV error: {}", resp.error);
+                        println!("{:?} MPV error: {}", cmd, resp.error);
                     }
                     return Ok(resp);
                 }
@@ -134,7 +134,17 @@ impl Player {
         Ok(())
     }
 
-    async fn wait_mpv(&mut self) -> bool {
+    pub async fn seek(&mut self, percent_pos: f64) -> tokio::io::Result<()> {
+        self.send_command(vec![
+            "seek".into(),
+            percent_pos.to_string(),
+            "absolute-percent".into(),
+        ])
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn wait_mpv(&mut self) -> bool {
         let max_init_attempts = 30; // 30 seconds max wait
 
         for attempt in 0..max_init_attempts {

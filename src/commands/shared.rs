@@ -43,6 +43,7 @@ pub async fn start_playback(
     path: impl AsRef<Path>,
     media_type: MediaType,
     player: Arc<Mutex<Player>>,
+    percent_pos: Option<f64>,
 ) -> Result<(SharedState, UnboundedReceiver<PlaybackEvent>)> {
     let state: SharedState = Arc::new(Mutex::new(PlaybackState::new()));
     {
@@ -53,6 +54,13 @@ pub async fn start_playback(
     {
         let mut player_guard = player.lock().await;
         player_guard.play_file(path).await?;
+        if let Some(pos) = percent_pos {
+            if !player_guard.wait_mpv().await {
+                player_guard.seek(pos).await?;
+            } else {
+                println!("Failed to initialize playback for seek");
+            }
+        }
     }
 
     let (tx, rx) = unbounded_channel::<PlaybackEvent>();
