@@ -10,12 +10,7 @@ use tokio::sync::Mutex;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let db = db::Db::get();
-    let incomplete: Vec<_> = db
-        .get_recent_watches(10)
-        .await?
-        .into_iter()
-        .filter(|entry| !entry.complete)
-        .collect();
+    let recent: Vec<_> = db.get_recent_watches(10).await?;
 
     let socket_name = "/tmp/pmc-mpv.sock";
     spawn_mpv(socket_name).expect("Failed to spawn MPV");
@@ -24,7 +19,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
 
     // Resume or play next
-    if let Some(to_resume) = incomplete.first() {
+    if let Some(to_resume) = recent.iter().find(|e| !e.complete) {
         match to_resume.media_type {
             MediaType::Movie => {
                 if let Some(movie) = index
@@ -76,37 +71,32 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
                 }
             }
         }
-    } else {
-        let recent: Vec<_> = db.get_recent_watches(10).await?;
-        if let Some(latest) = recent.first() {
-            if latest.media_type == MediaType::Show {
-                if let Some((show, _, _)) = index.episode_map.get(&latest.media_id) {
-                    let episodes = flatten_show(show);
-                    if let Some(next_episode) = get_next_episode(&latest.media_id, &episodes) {
-                        println!("Playing next episode: {}", next_episode.name);
-                        let (state, rx) = start_playback(
-                            next_episode.id.clone(),
-                            next_episode.path.clone(),
-                            MediaType::Show,
-                            player.clone(),
-                        )
-                        .await?;
-                        monitor_playback(
-                            rx,
-                            MediaType::Show,
-                            next_episode.id.clone(),
-                            index,
-                            state,
-                            db,
-                            player.clone(),
-                        )
-                        .await?;
-                    } else {
-                        println!("No more episodes available.");
-                    }
+    } else if let Some(latest) = recent.first() {
+        if latest.media_type == MediaType::Show {
+            if let Some((show, _, _)) = index.episode_map.get(&latest.media_id) {
+                let episodes = flatten_show(show);
+                if let Some(next_episode) = get_next_episode(&latest.media_id, &episodes) {
+                    println!("Playing next episode: {}", next_episode.name);
+                    let (state, rx) = start_playback(
+                        next_episode.id.clone(),
+                        next_episode.path.clone(),
+                        MediaType::Show,
+                        player.clone(),
+                    )
+                    .await?;
+                    monitor_playback(
+                        rx,
+                        MediaType::Show,
+                        next_episode.id.clone(),
+                        index,
+                        state,
+                        db,
+                        player.clone(),
+                    )
+                    .await?;
+                } else {
+                    println!("No more episodes available.");
                 }
-            } else {
-                println!("Latest media is a movie, no next episode to play.");
             }
         } else {
             println!("No recent watches found.");
