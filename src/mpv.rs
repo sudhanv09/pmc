@@ -43,7 +43,6 @@ struct MpvEndFileEvent {
 
 #[derive(Debug, Deserialize)]
 struct MpvScriptMessageEvent {
-    name: String,
     args: Vec<String>,
 }
 
@@ -322,29 +321,23 @@ impl Player {
                                 state_guard.stop_playback();
                                 break; // Exit the loop
                             }
-                            "script-message" => {
+                            "client-message" => {
                                 if let Ok(msg_event) =
                                     serde_json::from_value::<MpvScriptMessageEvent>(event.data)
                                 {
-                                    match msg_event.name.as_str() {
-                                        "pmc-quit" => {
-                                            println!("Saving progress before quitting...");
-                                            let _ = tx.send(PlaybackEvent::RequestQuit);
-
-                                        }
-                                        " PMC-next" => {
-                                            println!("Received next keybinding");
-                                            let _ = tx.send(PlaybackEvent::RequestNext);
-                                        }
-                                        "pmc-prev" => {
-                                            println!("Received prev keybinding");
-                                            let _ = tx.send(PlaybackEvent::RequestPrev);
-                                        }
-                                        _ => {
-                                            println!(
-                                                "Unhandled script-message: {}",
-                                                msg_event.name
-                                            );
+                                    if let Some(message) = msg_event.args.first() {
+                                        match message.as_str() {
+                                            "pmc-quit" => {
+                                                println!("Saving progress before quitting...");
+                                                let _ = tx.send(PlaybackEvent::RequestQuit);
+                                            }
+                                            "pmc-next" => {
+                                                let _ = tx.send(PlaybackEvent::RequestNext);
+                                            }
+                                            "pmc-prev" => {
+                                                let _ = tx.send(PlaybackEvent::RequestPrev);
+                                            }
+                                            _ => {}
                                         }
                                     }
                                 }
