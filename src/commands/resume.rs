@@ -49,7 +49,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
                 }
             }
             MediaType::Show => {
-                if let Some((show, _, episode)) = index.episode_map.get(&to_resume.media_id) {
+                if let Some((_, _, episode)) = index.episode_map.get(&to_resume.media_id) {
                     println!("Resuming episode: {}", episode.name);
                     let (state, rx) = start_playback(
                         episode.id.clone(),

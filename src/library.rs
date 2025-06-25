@@ -48,6 +48,9 @@ pub enum PlaybackEvent {
     Position(f64, String),
     Completed,
     Exited,
+    RequestNext,
+    RequestPrev,
+    RequestQuit,
     Error(String),
 }
 

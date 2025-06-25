@@ -5,8 +5,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf, split};
 use tokio::net::UnixStream;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{Duration, sleep};
 
 #[derive(Debug, Serialize)]
@@ -39,6 +39,12 @@ struct MpvPropertyChangeEvent {
 #[derive(Debug, Deserialize)]
 struct MpvEndFileEvent {
     reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpvScriptMessageEvent {
+    name: String,
+    args: Vec<String>,
 }
 
 pub struct Player {
@@ -119,13 +125,12 @@ impl Player {
 
     pub async fn play_file<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
         let path_str = path.as_ref().to_string_lossy();
-        self
-            .send_command(vec![
-                "loadfile".into(),
-                path_str.into_owned(),
-                "replace".into(),
-            ])
-            .await?;
+        self.send_command(vec![
+            "loadfile".into(),
+            path_str.into_owned(),
+            "replace".into(),
+        ])
+        .await?;
 
         Ok(())
     }
@@ -154,6 +159,21 @@ impl Player {
 
     pub async fn stop(&mut self) -> tokio::io::Result<()> {
         self.send_command(vec!["stop".into()]).await?;
+        Ok(())
+    }
+
+    pub async fn user_quit(&mut self) -> tokio::io::Result<()> {
+        self.send_command(vec!["quit".into()]).await?;
+        Ok(())
+    }
+
+    pub async fn playback_next<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
+        self.play_file(path).await?;
+        Ok(())
+    }
+
+    pub async fn playback_prev<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
+        self.play_file(path).await?;
         Ok(())
     }
 
@@ -246,8 +266,11 @@ impl Player {
                                                 prop_change.data.and_then(|d| d.as_f64())
                                             {
                                                 let mut state_guard = state.lock().await;
-                                                if let Some(media_id) = state_guard.media_id.clone() {
-                                                    let _ = tx.send(PlaybackEvent::Position(pos, media_id));
+                                                if let Some(media_id) = state_guard.media_id.clone()
+                                                {
+                                                    let _ = tx.send(PlaybackEvent::Position(
+                                                        pos, media_id,
+                                                    ));
                                                     state_guard.update_position(pos);
                                                 }
                                             }
@@ -299,6 +322,33 @@ impl Player {
                                 state_guard.stop_playback();
                                 break; // Exit the loop
                             }
+                            "script-message" => {
+                                if let Ok(msg_event) =
+                                    serde_json::from_value::<MpvScriptMessageEvent>(event.data)
+                                {
+                                    match msg_event.name.as_str() {
+                                        "pmc-quit" => {
+                                            println!("Saving progress before quitting...");
+                                            let _ = tx.send(PlaybackEvent::RequestQuit);
+
+                                        }
+                                        " PMC-next" => {
+                                            println!("Received next keybinding");
+                                            let _ = tx.send(PlaybackEvent::RequestNext);
+                                        }
+                                        "pmc-prev" => {
+                                            println!("Received prev keybinding");
+                                            let _ = tx.send(PlaybackEvent::RequestPrev);
+                                        }
+                                        _ => {
+                                            println!(
+                                                "Unhandled script-message: {}",
+                                                msg_event.name
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -320,6 +370,7 @@ pub fn spawn_mpv(socket_path: &str) -> std::io::Result<Child> {
         .arg("--force-window")
         .arg("--no-terminal")
         .arg(format!("--input-ipc-server={}", socket_path))
+        .arg("--no-input-default-bindings")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
