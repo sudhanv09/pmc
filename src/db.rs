@@ -141,31 +141,28 @@ impl Db {
         Ok(entries)
     }
 
-    pub async fn save_playback_progress(&self, state: SharedState) -> Result<(), Box<dyn std::error::Error>> {
-        let state_guard = state.lock().await;
-
-        if !state_guard.should_save_progress() {
+    pub async fn save_playback_progress(
+        &self,
+        media_id: String,
+        media_type: MediaType,
+        progress: f64,
+        is_completed: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if progress <= 0.0 && !is_completed {
             return Ok(());
         }
-
-        let media_id = state_guard.media_id.as_ref().unwrap();
-        let media_type = state_guard.media_type.as_ref().unwrap();
-
-        let progress = state_guard.completion_percentage();
-        let is_completed = state_guard.is_completed();
 
         println!("Saving progress: {}% for media {}", progress, media_id);
 
         let entry = WatchEntry {
             id: nanoid!(),
-            media_id: media_id.clone(),
-            media_type: media_type.clone(),
+            media_id,
+            media_type,
             progress: (progress as i16),
             complete: is_completed,
             watched_at: Local::now(),
         };
 
-        // You'll need to implement this based on your existing DB structure
         self.save_state(&entry).await?;
 
         Ok(())

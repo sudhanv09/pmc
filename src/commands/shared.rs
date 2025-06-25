@@ -121,6 +121,27 @@ async fn play_next(
     Ok(false)
 }
 
+pub async fn acquire_get_state(state: &SharedState) -> (String, MediaType, f64, bool) {
+    let state_guard = state.lock().await;
+    let media_id = state_guard.media_id.clone();
+    let media_type = state_guard.media_type.clone();
+    let progress = state_guard.completion_percentage();
+    let is_completed = state_guard.is_completed();
+
+    if progress > 98.0 && !is_completed {
+        drop(state_guard); // Release lock before re-acquiring
+        let mut state_guard = state.lock().await;
+        state_guard.mark_completed();
+    }
+
+    (
+        media_id.unwrap(),
+        media_type.unwrap(),
+        progress,
+        is_completed,
+    )
+}
+
 pub async fn monitor_playback(
     mut rx: UnboundedReceiver<PlaybackEvent>,
     media_type: MediaType,
@@ -162,13 +183,12 @@ pub async fn monitor_playback(
                     {
                         has_reached_completion = true;
                         println!("{}", "Reached 98% completion".cyan());
-                        {
-                            let mut state_guard = state.lock().await;
-                            state_guard.mark_completed();
-                        }
+
+                        let (media_id, media_type, progress, is_completed) =
+                            acquire_get_state(&state).await;
 
                         println!("{}", "Saving to db".cyan());
-                        db.save_playback_progress(state.clone())
+                        db.save_playback_progress(media_id, media_type, progress, is_completed)
                             .await
                             .expect("Could not save playback progress");
 
@@ -200,9 +220,9 @@ pub async fn monitor_playback(
                 PlaybackEvent::Completed => {
                     println!("{}", "✅ Playback complete".blue());
                     if !has_reached_completion {
-                        let mut state_guard = state.lock().await;
-                        state_guard.mark_completed();
-                        db.save_playback_progress(state.clone())
+                        let (media_id, media_type, progress, is_completed) =
+                            acquire_get_state(&state).await;
+                        db.save_playback_progress(media_id, media_type, progress, is_completed)
                             .await
                             .expect("Could not save playback progress");
                     }
@@ -305,17 +325,12 @@ pub async fn monitor_playback(
                 }
                 PlaybackEvent::RequestQuit => {
                     println!("{}", "User requested quit".cyan());
-                    {
-                        let mut state_guard = state.lock().await;
-                        if state_guard.is_playing && state_guard.should_save_progress() {
-                            if let Some(pos) = state_guard.percent_pos {
-                                state_guard.update_position(pos);
-                                db.save_playback_progress(state.clone())
-                                    .await
-                                    .expect("Could not save playback progress");
-                            }
-                        }
-                        state_guard.stop_playback();
+                    let (media_id, media_type, progress, is_completed) =
+                        acquire_get_state(&state).await;
+                    if !media_id.is_empty() {
+                        db.save_playback_progress(media_id, media_type, progress, is_completed)
+                            .await
+                            .expect("Could not save playback progress");
                     }
                     {
                         let mut player_guard = player.lock().await;
@@ -324,7 +339,7 @@ pub async fn monitor_playback(
                         }
                     }
                     let _ = rx.try_recv(); // Clear any pending events
-                    return Ok(());
+                    break;
                 }
             }
         }

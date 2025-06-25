@@ -1,4 +1,4 @@
-use crate::commands::shared::{flatten_show, monitor_playback, start_playback};
+use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
 use crate::mpv::{Player, spawn_mpv};
@@ -69,7 +69,9 @@ async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
         player.clone(),
     )
     .await?;
-    db.save_playback_progress(state).await.unwrap();
+    let (media_id, media_type, progress, is_completed) =
+        acquire_get_state(&state).await;
+    db.save_playback_progress(media_id, media_type, progress, is_completed).await.unwrap();
 
     Ok(())
 }
@@ -122,7 +124,9 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
             player.clone(),
         )
         .await?;
-        db.save_playback_progress(state).await.unwrap();
+        let (media_id, media_type, progress, is_completed) =
+            acquire_get_state(&state).await;
+        db.save_playback_progress(media_id, media_type, progress, is_completed).await.unwrap();
     } else {
         println!("Nothing to play.");
     }
