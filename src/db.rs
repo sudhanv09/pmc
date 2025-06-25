@@ -1,6 +1,4 @@
-#![allow(warnings)]
-
-use crate::library::{MediaType, SharedState, WatchEntry};
+use crate::library::{MediaType, WatchEntry};
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use sqlx::sqlite::SqliteRow;

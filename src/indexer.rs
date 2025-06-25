@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};

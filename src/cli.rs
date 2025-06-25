@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 use crate::commands;
 use clap::{Parser, Subcommand};
 

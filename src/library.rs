@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 use crate::indexer;
 use crate::indexer::{Episode, Library, Season, Tv};
 use chrono::{DateTime, Local};
@@ -54,11 +52,6 @@ pub enum PlaybackEvent {
     Error(String),
 }
 
-pub struct ShowPlaybackSession {
-    pub episodes: Vec<Episode>,
-    pub current_index: usize,
-}
-
 pub type SharedState = Arc<Mutex<PlaybackState>>;
 
 impl PlaybackState {
@@ -89,6 +82,7 @@ impl PlaybackState {
         self.is_playing = false;
     }
 
+    #[allow(unused)]
     pub fn should_save_progress(&self) -> bool {
         self.media_id.is_some() && self.percent_pos.is_some()
     }
