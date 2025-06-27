@@ -1,3 +1,4 @@
+use crate::utils::{guess_name, guess_season};
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use crate::utils::{guess_name, guess_season};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Library {
@@ -43,6 +43,20 @@ pub struct Episode {
     pub path: PathBuf,
     pub created_at: DateTime<Local>,
     pub size: u64,
+}
+
+impl Tv {
+    pub fn flatten_show(&self) -> Vec<Episode> {
+        let mut entries = Vec::new();
+
+        for item in self.seasons.iter() {
+            for episode in item.episodes.iter() {
+                entries.push(episode.clone());
+            }
+        }
+
+        entries
+    }
 }
 
 fn valid_ext(path: &Path) -> bool {

@@ -1,5 +1,5 @@
 use crate::cli::PlayArgs;
-use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback, start_playback};
+use crate::commands::shared::{acquire_get_state, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary};
 use crate::state::{MediaType, WatchEntry};
@@ -100,7 +100,7 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
         .interact()?;
 
     let show = &index.library.shows[choice];
-    let episodes = flatten_show(show);
+    let episodes = show.flatten_show();
     let history = db.get_media_history(show.id.clone()).await?;
 
     if let Some(episode) = select_episode_to_play(&episodes, &history) {

@@ -1,4 +1,4 @@
-use crate::commands::shared::{flatten_show, monitor_playback, start_playback};
+use crate::commands::shared::{monitor_playback, start_playback};
 use crate::db;
 use crate::library::MediaLibrary;
 use crate::mpv::init_player;

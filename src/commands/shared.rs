@@ -1,5 +1,4 @@
 use crate::db::Db;
-use crate::indexer::{Episode, Tv};
 use crate::library::MediaLibrary;
 use crate::mpv::Player;
 use crate::state::{MediaType, PlaybackEvent, PlaybackState, SharedState};
@@ -9,18 +8,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-
-pub fn flatten_show(show: &Tv) -> Vec<Episode> {
-    let mut entries = Vec::new();
-
-    for item in show.seasons.iter() {
-        for episode in item.episodes.iter() {
-            entries.push(episode.clone());
-        }
-    }
-
-    entries
-}
 
 pub async fn start_playback(
     media_id: String,
