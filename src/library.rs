@@ -65,14 +65,6 @@ impl MediaLibrary {
         self.episode_map = episode_map;
     }
 
-    pub fn get_episode(&self, episode_id: &str) -> Option<&(Tv, Season, Episode)> {
-        self.episode_map.get(episode_id)
-    }
-
-    pub fn get_show(&self, show_id: &str) -> Option<&Tv> {
-        self.show_map.get(show_id)
-    }
-
     pub fn get_next_episode(&self, current_episode_id: &str) -> Option<Episode> {
         let (_, season, episode) = self.episode_map.get(current_episode_id)?;
         let episodes = &season.episodes;
