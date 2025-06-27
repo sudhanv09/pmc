@@ -8,7 +8,7 @@ use dialoguer::theme::ColorfulTheme;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MediaLibrary {
@@ -138,10 +138,13 @@ fn prompt_for_dirs() -> Result<(String, String)> {
             .interact_text()
             .context("Failed to read movie directory")?;
 
-        if let Err(err) = validate_dir(&input) {
-            println!("{}", format!("Invalid movie directory: {}", err).red());
-        } else {
-            break input;
+        match validate_dir(&input) {
+            Ok(valid_path) => {
+                break valid_path;
+            }
+            Err(err) => {
+                println!("{}", format!("Invalid movie directory: {}", err).red());
+            }
         }
     };
 
@@ -151,10 +154,13 @@ fn prompt_for_dirs() -> Result<(String, String)> {
             .interact_text()
             .context("Failed to read TV directory")?;
 
-        if let Err(err) = validate_dir(&input) {
-            println!("{}", format!("Invalid TV directory: {}", err).red());
-        } else {
-            break input;
+        match validate_dir(&input) {
+            Ok(valid_path) => {
+                break valid_path;
+            }
+            Err(err) => {
+                println!("{}", format!("Invalid Tv directory: {}", err).red());
+            }
         }
     };
 
