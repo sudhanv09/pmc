@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc};
 use tokio::sync::Mutex;
+use anyhow::{Result, Context};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MediaType {
@@ -160,13 +161,13 @@ impl MediaLibrary {
     }
 }
 
-pub async fn load_or_configure_library() -> tokio::io::Result<MediaLibrary> {
+pub async fn load_or_configure_library() -> Result<MediaLibrary> {
     let index_path = "./index.json";
 
     if Path::new(index_path).exists() {
         let data = fs::read_to_string(index_path)?;
         let mut library: MediaLibrary = serde_json::from_str(&data)?;
-        library.rebuild_maps(); // 🔧 Restore runtime-only maps
+        library.rebuild_maps();
         Ok(library)
     } else {
         println!("{}", "Welcome to pmc!".blue());
@@ -174,12 +175,12 @@ pub async fn load_or_configure_library() -> tokio::io::Result<MediaLibrary> {
         let movie_dir: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter movie directory")
             .interact_text()
-            .unwrap();
+            .context("Failed to read movie directory")?;
 
         let tv_dir: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter tv directory")
             .interact_text()
-            .unwrap();
+            .context("Failed to read shows directory")?;
 
         let library = indexer::index(movie_dir.clone(), tv_dir.clone());
         let media_library = MediaLibrary::new(movie_dir, tv_dir, library);

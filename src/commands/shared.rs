@@ -7,8 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-
-type Result<T> = std::result::Result<T, anyhow::Error>;
+use anyhow::Result;
 
 pub fn flatten_show(show: &Tv) -> Vec<Episode> {
     let mut entries = Vec::new();

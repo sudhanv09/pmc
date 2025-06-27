@@ -1,4 +1,6 @@
 use crate::library::{MediaType, WatchEntry};
+use anyhow::Context;
+use anyhow::{Result, bail};
 use chrono::{DateTime, Local};
 use nanoid::nanoid;
 use sqlx::sqlite::SqliteRow;
@@ -52,7 +54,7 @@ impl Db {
         DB_CTX.get().expect("DB not initialized")
     }
 
-    fn row_to_watch_entry(&self, row: Vec<SqliteRow>) -> Vec<WatchEntry> {
+    fn row_to_watch_entry(&self, row: Vec<SqliteRow>) -> Result<Vec<WatchEntry>> {
         row.into_iter()
             .map(|row| {
                 let id = row.get("id");
@@ -65,23 +67,32 @@ impl Db {
                 let media_type = match media_type_str.as_str() {
                     "Movie" => MediaType::Movie,
                     "Show" => MediaType::Show,
-                    _ => panic!("Unknown media type"),
+                    _ => {
+                        return Err(bail!(
+                            "Unknown media type '{}' for WatchEntry id '{}'",
+                            media_type_str,
+                            id
+                        ));
+                    }
                 };
 
                 let watched_at = DateTime::parse_from_rfc3339(&watched_at_str)
-                    .unwrap()
+                    .context(format!(
+                        "Failed to parse watched_at timestamp '{}' for WatchEntry id '{}'",
+                        watched_at_str, id
+                    ))?
                     .with_timezone(&Local);
 
-                WatchEntry {
+                Ok(WatchEntry {
                     id,
                     media_id,
                     media_type,
                     progress,
                     complete,
                     watched_at,
-                }
+                })
             })
-            .collect::<Vec<WatchEntry>>()
+            .collect()
     }
 
     pub async fn save_state(&self, entry: &WatchEntry) -> sqlx::Result<()> {
@@ -106,7 +117,7 @@ impl Db {
         Ok(())
     }
 
-    pub async fn get_recent_watches(&self, limit: i64) -> sqlx::Result<Vec<WatchEntry>> {
+    pub async fn get_recent_watches(&self, limit: i64) -> Result<Vec<WatchEntry>> {
         let rows = sqlx::query(
             r#"
             SELECT *
@@ -119,11 +130,11 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
 
-        let entries = self.row_to_watch_entry(rows);
+        let entries = self.row_to_watch_entry(rows)?;
         Ok(entries)
     }
 
-    pub async fn get_media_history(&self, id: String) -> sqlx::Result<Vec<WatchEntry>> {
+    pub async fn get_media_history(&self, id: String) -> Result<Vec<WatchEntry>> {
         let rows = sqlx::query(
             r#"
                 select *
@@ -135,7 +146,7 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
 
-        let entries = self.row_to_watch_entry(rows);
+        let entries = self.row_to_watch_entry(rows)?;
         Ok(entries)
     }
 
@@ -145,7 +156,7 @@ impl Db {
         media_type: MediaType,
         progress: f64,
         is_completed: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         if progress <= 0.0 && !is_completed {
             return Ok(());
         }
@@ -161,7 +172,10 @@ impl Db {
             watched_at: Local::now(),
         };
 
-        self.save_state(&entry).await?;
+        self.save_state(&entry).await.context(format!(
+            "Failed to save playback state for media ID: {}",
+            entry.media_id
+        ))?;
 
         Ok(())
     }

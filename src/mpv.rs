@@ -8,6 +8,7 @@ use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{Duration, sleep};
+use anyhow::{Result, bail};
 
 #[derive(Debug, Serialize)]
 struct MpvCommand {
@@ -53,7 +54,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub async fn init<P: AsRef<Path>>(socket_path: P) -> tokio::io::Result<Self> {
+    pub async fn init<P: AsRef<Path>>(socket_path: P) -> Result<Self> {
         let stream = UnixStream::connect(socket_path).await?;
         let (read_half, write_half) = split(stream);
         Ok(Self {
@@ -63,7 +64,7 @@ impl Player {
         })
     }
 
-    async fn send_command(&mut self, args: Vec<String>) -> tokio::io::Result<MpvResponse> {
+    async fn send_command(&mut self, args: Vec<String>) -> Result<MpvResponse> {
         let request_id = self.next_request_id;
         self.next_request_id = self.next_request_id.wrapping_add(1);
 
@@ -80,9 +81,8 @@ impl Player {
             let mut response = String::new();
             let bytes_read = self.reader.read_line(&mut response).await?;
             if bytes_read == 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "MPV socket closed",
+                return Err(bail!(
+                    "{} MPV socket closed", std::io::ErrorKind::UnexpectedEof
                 ));
             }
             if response.trim().is_empty() {
@@ -101,7 +101,7 @@ impl Player {
         }
     }
 
-    async fn observe_property(&mut self, name: &str, id: i32) -> tokio::io::Result<()> {
+    async fn observe_property(&mut self, name: &str, id: i32) -> Result<()> {
         let cmd = MpvCommand {
             command: vec![
                 serde_json::Value::String("observe_property".to_string()),
@@ -117,12 +117,12 @@ impl Player {
         Ok(())
     }
 
-    async fn get_property(&mut self, prop: &str) -> tokio::io::Result<MpvResponse> {
+    async fn get_property(&mut self, prop: &str) -> Result<MpvResponse> {
         self.send_command(vec!["get_property".into(), prop.into()])
             .await
     }
 
-    pub async fn play_file<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
+    pub async fn play_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let path_str = path.as_ref().to_string_lossy();
         self.send_command(vec![
             "loadfile".into(),
@@ -134,7 +134,7 @@ impl Player {
         Ok(())
     }
 
-    pub async fn seek(&mut self, percent_pos: f64) -> tokio::io::Result<()> {
+    pub async fn seek(&mut self, percent_pos: f64) -> Result<()> {
         self.send_command(vec![
             "seek".into(),
             percent_pos.to_string(),
@@ -166,22 +166,22 @@ impl Player {
         true // Should never reach here
     }
 
-    pub async fn stop(&mut self) -> tokio::io::Result<()> {
+    pub async fn stop(&mut self) -> Result<()> {
         self.send_command(vec!["stop".into()]).await?;
         Ok(())
     }
 
-    pub async fn user_quit(&mut self) -> tokio::io::Result<()> {
+    pub async fn user_quit(&mut self) -> Result<()> {
         self.send_command(vec!["quit".into()]).await?;
         Ok(())
     }
 
-    pub async fn playback_next<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
+    pub async fn playback_next<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.play_file(path).await?;
         Ok(())
     }
 
-    pub async fn playback_prev<P: AsRef<Path>>(&mut self, path: P) -> tokio::io::Result<()> {
+    pub async fn playback_prev<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.play_file(path).await?;
         Ok(())
     }

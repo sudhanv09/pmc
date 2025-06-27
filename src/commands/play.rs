@@ -2,7 +2,8 @@ use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback,
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
 use crate::mpv::{init_player};
-use anyhow::Result;
+use anyhow::{Context, Result};
+use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
@@ -65,7 +66,7 @@ async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
     let (media_id, media_type, progress, is_completed) = acquire_get_state(&state).await;
     db.save_playback_progress(media_id, media_type, progress, is_completed)
         .await
-        .unwrap();
+        .context("Failed to save playback progress.".red())?;
 
     Ok(())
 }
@@ -118,7 +119,7 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
         let (media_id, media_type, progress, is_completed) = acquire_get_state(&state).await;
         db.save_playback_progress(media_id, media_type, progress, is_completed)
             .await
-            .unwrap();
+            .context("Failed to save playback progress.".red())?;
     } else {
         println!("Nothing to play.");
     }
