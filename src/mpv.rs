@@ -1,4 +1,5 @@
 use crate::library::{PlaybackEvent, SharedState};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -8,7 +9,6 @@ use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{Duration, sleep};
-use anyhow::{Result, bail};
 
 #[derive(Debug, Serialize)]
 struct MpvCommand {
@@ -81,9 +81,7 @@ impl Player {
             let mut response = String::new();
             let bytes_read = self.reader.read_line(&mut response).await?;
             if bytes_read == 0 {
-                return Err(bail!(
-                    "{} MPV socket closed", std::io::ErrorKind::UnexpectedEof
-                ));
+                bail!("{} MPV socket closed", std::io::ErrorKind::UnexpectedEof);
             }
             if response.trim().is_empty() {
                 continue;
@@ -140,7 +138,7 @@ impl Player {
             percent_pos.to_string(),
             "absolute-percent".into(),
         ])
-            .await?;
+        .await?;
         Ok(())
     }
 
@@ -369,16 +367,19 @@ impl Player {
 
 pub async fn init_player() -> Arc<Mutex<Player>> {
     let socket_name = "/tmp/pmc-mpv.sock";
-    
-    let player = Arc::new(Mutex::new(Player::init(socket_name).await.expect("Failed to init player")));
+
+    let player = Arc::new(Mutex::new(
+        Player::init(socket_name)
+            .await
+            .expect("Failed to init player"),
+    ));
     spawn_mpv(socket_name).expect("Failed to spawn MPV");
-    sleep(Duration::from_secs(1));
-    
+    let _ = sleep(Duration::from_secs(1)).await;
+
     player
 }
 
-
-fn spawn_mpv(socket_path: &str) -> std::io::Result<Child> {
+fn spawn_mpv(socket_path: &str) -> Result<Child> {
     let child = Command::new("mpv")
         .arg("--idle")
         .arg("--force-window")

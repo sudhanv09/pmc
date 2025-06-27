@@ -5,14 +5,6 @@ use clap::{Parser, Subcommand};
 #[command(name = "pmc")]
 #[command(about = "simple CLI tool to manage your media", long_about = None)]
 pub struct App {
-    #[arg(
-        short,
-        long,
-        help = "Path to the MPV IPC socket",
-        default_value = "/tmp/mpvipc"
-    )]
-    pub mpv_socket: String,
-
     #[command(subcommand)]
     pub command: Commands,
 }

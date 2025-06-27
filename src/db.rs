@@ -67,13 +67,11 @@ impl Db {
                 let media_type = match media_type_str.as_str() {
                     "Movie" => MediaType::Movie,
                     "Show" => MediaType::Show,
-                    _ => {
-                        return Err(bail!(
-                            "Unknown media type '{}' for WatchEntry id '{}'",
-                            media_type_str,
-                            id
-                        ));
-                    }
+                    _ => bail!(
+                        "Unknown media type '{}' for WatchEntry id '{}'",
+                        media_type_str,
+                        id
+                    ),
                 };
 
                 let watched_at = DateTime::parse_from_rfc3339(&watched_at_str)
@@ -167,7 +165,7 @@ impl Db {
             id: nanoid!(),
             media_id,
             media_type,
-            progress: (progress as i16),
+            progress: progress as i16,
             complete: is_completed,
             watched_at: Local::now(),
         };
