@@ -174,16 +174,6 @@ impl Player {
         Ok(())
     }
 
-    pub async fn playback_next<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.play_file(path).await?;
-        Ok(())
-    }
-
-    pub async fn playback_prev<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.play_file(path).await?;
-        Ok(())
-    }
-
     pub async fn start_monitoring(
         player: &Arc<Mutex<Player>>,
         state: SharedState,
@@ -367,16 +357,14 @@ impl Player {
 
 pub async fn init_player() -> Arc<Mutex<Player>> {
     let socket_name = "/tmp/pmc-mpv.sock";
-
-    let player = Arc::new(Mutex::new(
-        Player::init(socket_name)
-            .await
-            .expect("Failed to init player"),
-    ));
     spawn_mpv(socket_name).expect("Failed to spawn MPV");
     let _ = sleep(Duration::from_secs(1)).await;
 
-    player
+    Arc::new(Mutex::new(
+        Player::init(socket_name)
+            .await
+            .expect("Failed to init player"),
+    ))
 }
 
 fn spawn_mpv(socket_path: &str) -> Result<Child> {
