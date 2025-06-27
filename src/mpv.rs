@@ -367,7 +367,18 @@ impl Player {
     }
 }
 
-pub fn spawn_mpv(socket_path: &str) -> std::io::Result<Child> {
+pub async fn init_player() -> Arc<Mutex<Player>> {
+    let socket_name = "/tmp/pmc-mpv.sock";
+    
+    let player = Arc::new(Mutex::new(Player::init(socket_name).await.expect("Failed to init player")));
+    spawn_mpv(socket_name).expect("Failed to spawn MPV");
+    sleep(Duration::from_secs(1));
+    
+    player
+}
+
+
+fn spawn_mpv(socket_path: &str) -> std::io::Result<Child> {
     let child = Command::new("mpv")
         .arg("--idle")
         .arg("--force-window")

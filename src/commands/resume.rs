@@ -1,19 +1,14 @@
 use crate::commands::shared::{flatten_show, get_next_episode, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
-use crate::mpv::{Player, spawn_mpv};
+use crate::mpv::{init_player};
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let db = db::Db::get();
     let recent: Vec<_> = db.get_recent_watches(10).await?;
 
-    let socket_name = "/tmp/pmc-mpv.sock";
-    spawn_mpv(socket_name).expect("Failed to spawn MPV");
-
-    let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
+    let player = init_player().await;
 
     // Resume or play next
     if let Some(to_resume) = recent.iter().find(|e| !e.complete) {

@@ -1,11 +1,9 @@
 use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
-use crate::mpv::{Player, spawn_mpv};
+use crate::mpv::{init_player};
 use anyhow::Result;
 use dialoguer::{Select, theme::ColorfulTheme};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let db = db::Db::get();
@@ -43,10 +41,7 @@ async fn play_movie(index: &MediaLibrary, db: &db::Db) -> Result<()> {
     let movie = &index.library.movies[choice];
     println!("Now playing movie: {}", movie.name);
 
-    let socket_name = "/tmp/pmc-mpv.sock";
-    spawn_mpv(socket_name).expect("Failed to spawn MPV");
-
-    let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
+    let player = init_player().await;
 
     let (state, rx) = start_playback(
         movie.id.clone(),
@@ -99,10 +94,7 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
     if let Some(episode) = select_episode_to_play(&episodes, &history) {
         println!("Now playing: {}", episode.name);
 
-        let socket_name = "/tmp/pmc-mpv.sock";
-        spawn_mpv(socket_name).expect("Failed to spawn MPV");
-
-        let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
+        let player = init_player().await;
 
         let (state, rx) = start_playback(
             episode.id.clone(),
