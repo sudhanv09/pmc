@@ -1,8 +1,8 @@
-use crate::commands::shared::{flatten_show, get_next_episode, monitor_playback, start_playback};
+use crate::commands::shared::{flatten_show, monitor_playback, start_playback};
 use crate::db;
-use crate::library::{MediaLibrary};
+use crate::library::MediaLibrary;
+use crate::mpv::init_player;
 use crate::state::MediaType;
-use crate::mpv::{init_player};
 use anyhow::Result;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
@@ -68,31 +68,28 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
         }
     } else if let Some(latest) = recent.first() {
         if latest.media_type == MediaType::Show {
-            if let Some((show, _, _)) = index.episode_map.get(&latest.media_id) {
-                let episodes = flatten_show(show);
-                if let Some(next_episode) = get_next_episode(&latest.media_id, &episodes) {
-                    println!("Playing next episode: {}", next_episode.name);
-                    let (state, rx) = start_playback(
-                        next_episode.id.clone(),
-                        next_episode.path.clone(),
-                        MediaType::Show,
-                        player.clone(),
-                        None
-                    )
-                    .await?;
-                    monitor_playback(
-                        rx,
-                        MediaType::Show,
-                        next_episode.id.clone(),
-                        index,
-                        state,
-                        db,
-                        player.clone(),
-                    )
-                    .await?;
-                } else {
-                    println!("No more episodes available.");
-                }
+            if let Some(next_episode) = index.get_next_episode(&latest.media_id) {
+                println!("Playing next episode: {}", next_episode.name);
+                let (state, rx) = start_playback(
+                    next_episode.id.clone(),
+                    next_episode.path.clone(),
+                    MediaType::Show,
+                    player.clone(),
+                    None,
+                )
+                .await?;
+                monitor_playback(
+                    rx,
+                    MediaType::Show,
+                    next_episode.id.clone(),
+                    index,
+                    state,
+                    db,
+                    player.clone(),
+                )
+                .await?;
+            } else {
+                println!("No more episodes available.");
             }
         } else {
             println!("No recent watches found.");

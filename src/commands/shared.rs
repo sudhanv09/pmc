@@ -22,20 +22,6 @@ pub fn flatten_show(show: &Tv) -> Vec<Episode> {
     entries
 }
 
-pub fn get_next_episode(current_episode_id: &str, episodes: &[Episode]) -> Option<Episode> {
-    let current_pos = episodes.iter().position(|e| e.id == current_episode_id)?;
-    episodes.get(current_pos + 1).cloned()
-}
-
-pub fn get_prev_episode(current_episode_id: &str, episodes: &[Episode]) -> Option<Episode> {
-    let current_pos = episodes.iter().position(|e| e.id == current_episode_id)?;
-    if current_pos > 0 {
-        episodes.get(current_pos - 1).cloned()
-    } else {
-        None
-    }
-}
-
 pub async fn start_playback(
     media_id: String,
     path: impl AsRef<Path>,
@@ -81,45 +67,42 @@ async fn play_next(
     has_reached_completion: &mut bool,
 ) -> Result<bool> {
     if current_media_type == MediaType::Show {
-        if let Some((show, _, _)) = index.episode_map.get(current_media_id) {
-            let episodes = flatten_show(show);
-            if let Some(next_episode) = get_next_episode(current_media_id, &episodes) {
-                println!(
-                    "{}",
-                    format!("Playing next episode: {}", next_episode.name).blue()
+        if let Some(next_episode) = index.get_next_episode(current_media_id) {
+            println!(
+                "{}",
+                format!("Playing next episode: {}", next_episode.name).blue()
+            );
+            *has_reached_completion = false;
+
+            {
+                let mut state_guard = state.lock().await;
+                state_guard.init(
+                    next_episode.id.clone(),
+                    next_episode.path.clone(),
+                    MediaType::Show,
                 );
-                *has_reached_completion = false;
-
-                {
-                    let mut state_guard = state.lock().await;
-                    state_guard.init(
-                        next_episode.id.clone(),
-                        next_episode.path.clone(),
-                        MediaType::Show,
-                    );
-                    state_guard.percent_pos = None;
-                }
-
-                {
-                    let mut player_guard = player.lock().await;
-                    if let Err(e) = player_guard.stop().await {
-                        eprintln!("Failed to stop player: {}", e);
-                    }
-                }
-
-                {
-                    let mut player_guard = player.lock().await;
-                    if let Err(e) = player_guard.play_file(&next_episode.path).await {
-                        eprintln!("Failed to load next file: {}", e);
-                    }
-                }
-
-                *current_media_id = next_episode.id.clone();
-                return Ok(true);
-            } else {
-                println!("{}", "No more episodes in this season".yellow());
-                return Ok(false);
+                state_guard.percent_pos = None;
             }
+
+            {
+                let mut player_guard = player.lock().await;
+                if let Err(e) = player_guard.stop().await {
+                    eprintln!("Failed to stop player: {}", e);
+                }
+            }
+
+            {
+                let mut player_guard = player.lock().await;
+                if let Err(e) = player_guard.play_file(&next_episode.path).await {
+                    eprintln!("Failed to load next file: {}", e);
+                }
+            }
+
+            *current_media_id = next_episode.id.clone();
+            return Ok(true);
+        } else {
+            println!("{}", "No more episodes in this season".yellow());
+            return Ok(false);
         }
     }
     Ok(false)
@@ -246,82 +229,69 @@ pub async fn monitor_playback(
                 }
                 PlaybackEvent::RequestNext => {
                     if current_media_type == MediaType::Show {
-                        if let Some((show, _, _)) = index.episode_map.get(&current_media_id) {
-                            let episodes = flatten_show(show);
-                            if let Some(next_episode) =
-                                get_next_episode(&current_media_id, &episodes)
+                        if let Some(next_episode) = index.get_next_episode(&current_media_id) {
+                            println!(
+                                "{}",
+                                format!("Playing next episode: {}", next_episode.name).blue()
+                            );
+                            has_reached_completion = false;
                             {
-                                println!(
-                                    "{}",
-                                    format!("Playing next episode: {}", next_episode.name).blue()
+                                let mut state_guard = state.lock().await;
+                                state_guard.init(
+                                    next_episode.id.clone(),
+                                    next_episode.path.clone(),
+                                    MediaType::Show,
                                 );
-                                has_reached_completion = false;
-                                {
-                                    let mut state_guard = state.lock().await;
-                                    state_guard.init(
-                                        next_episode.id.clone(),
-                                        next_episode.path.clone(),
-                                        MediaType::Show,
-                                    );
-                                    state_guard.percent_pos = None;
-                                }
-                                {
-                                    let mut player_guard = player.lock().await;
-                                    if let Err(e) = player_guard.stop().await {
-                                        eprintln!("Failed to stop player: {}", e);
-                                    }
-                                    if let Err(e) =
-                                        player_guard.playback_next(&next_episode.path).await
-                                    {
-                                        eprintln!("Failed to play next episode: {}", e);
-                                    }
-                                }
-                                current_media_id = next_episode.id.clone();
-                                continue;
-                            } else {
-                                println!("{}", "No more episodes in this season".yellow());
+                                state_guard.percent_pos = None;
                             }
+                            {
+                                let mut player_guard = player.lock().await;
+                                if let Err(e) = player_guard.stop().await {
+                                    eprintln!("Failed to stop player: {}", e);
+                                }
+                                if let Err(e) = player_guard.playback_next(&next_episode.path).await
+                                {
+                                    eprintln!("Failed to play next episode: {}", e);
+                                }
+                            }
+                            current_media_id = next_episode.id.clone();
+                            continue;
+                        } else {
+                            println!("{}", "No more episodes in this season".yellow());
                         }
                     }
                 }
                 PlaybackEvent::RequestPrev => {
                     if current_media_type == MediaType::Show {
-                        if let Some((show, _, _)) = index.episode_map.get(&current_media_id) {
-                            let episodes = flatten_show(show);
-                            if let Some(prev_episode) =
-                                get_prev_episode(&current_media_id, &episodes)
+                        if let Some(prev_episode) = index.get_prev_episode(&current_media_id) {
+                            println!(
+                                "{}",
+                                format!("Playing previous episode: {}", prev_episode.name).blue()
+                            );
+                            has_reached_completion = false;
                             {
-                                println!(
-                                    "{}",
-                                    format!("Playing previous episode: {}", prev_episode.name)
-                                        .blue()
+                                let mut state_guard = state.lock().await;
+                                state_guard.init(
+                                    prev_episode.id.clone(),
+                                    prev_episode.path.clone(),
+                                    MediaType::Show,
                                 );
-                                has_reached_completion = false;
-                                {
-                                    let mut state_guard = state.lock().await;
-                                    state_guard.init(
-                                        prev_episode.id.clone(),
-                                        prev_episode.path.clone(),
-                                        MediaType::Show,
-                                    );
-                                    state_guard.percent_pos = None;
-                                }
-                                {
-                                    let mut player_guard = player.lock().await;
-                                    if let Err(e) = player_guard.stop().await {
-                                        eprintln!("Failed to stop player: {}", e);
-                                    }
-                                    if let Err(e) =
-                                        player_guard.playback_prev(&prev_episode.path).await
-                                    {
-                                        eprintln!("Failed to play previous episode: {}", e);
-                                    }
-                                }
-                                current_media_id = prev_episode.id.clone();
-                                continue;
-                            } else {
-                                println!("{}", "No previous episodes available".yellow());
+                                state_guard.percent_pos = None;
                             }
+                            {
+                                let mut player_guard = player.lock().await;
+                                if let Err(e) = player_guard.stop().await {
+                                    eprintln!("Failed to stop player: {}", e);
+                                }
+                                if let Err(e) = player_guard.playback_prev(&prev_episode.path).await
+                                {
+                                    eprintln!("Failed to play previous episode: {}", e);
+                                }
+                            }
+                            current_media_id = prev_episode.id.clone();
+                            continue;
+                        } else {
+                            println!("{}", "No previous episodes available".yellow());
                         }
                     }
                 }

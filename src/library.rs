@@ -72,6 +72,26 @@ impl MediaLibrary {
     pub fn get_show(&self, show_id: &str) -> Option<&Tv> {
         self.show_map.get(show_id)
     }
+
+    pub fn get_next_episode(&self, current_episode_id: &str) -> Option<Episode> {
+        let (_, season, episode) = self.episode_map.get(current_episode_id)?;
+        let episodes = &season.episodes;
+
+        let current_pos = episodes.iter().position(|e| e.id == episode.id)?;
+        episodes.get(current_pos + 1).cloned()
+    }
+
+    pub fn get_prev_episode(&self, current_episode_id: &str) -> Option<Episode> {
+        let (_, season, episode) = self.episode_map.get(current_episode_id)?;
+        let episodes = &season.episodes;
+
+        let current_pos = episodes.iter().position(|e| e.id == episode.id)?;
+        if current_pos > 0 {
+            episodes.get(current_pos - 1).cloned()
+        } else {
+            None
+        }
+    }
 }
 
 pub async fn load_or_configure_library() -> Result<MediaLibrary> {
