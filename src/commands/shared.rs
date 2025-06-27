@@ -5,10 +5,8 @@ use crate::mpv::Player;
 use colored::Colorize;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use tokio::time::{sleep, timeout};
 
 type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -109,7 +107,6 @@ async fn play_next(
                     }
                 }
 
-                sleep(Duration::from_millis(1000)).await;
 
                 {
                     let mut player_guard = player.lock().await;
@@ -201,12 +198,12 @@ pub async fn monitor_playback(
                             .expect("Could not save playback progress");
 
                         // Drain queue to clear stale events
-                        let drain_timeout = timeout(Duration::from_millis(500), async {
-                            while rx.try_recv().is_ok() {}
-                        });
-                        if let Err(e) = drain_timeout.await {
-                            println!("Queue drain timed out: {}", e);
-                        }
+                        // let drain_timeout = timeout(Duration::from_millis(500), async {
+                        //     while rx.try_recv().is_ok() {}
+                        // });
+                        // if let Err(e) = drain_timeout.await {
+                        //     println!("Queue drain timed out: {}", e);
+                        // }
 
                         // Play next episode
                         if play_next(
@@ -274,7 +271,6 @@ pub async fn monitor_playback(
                                     if let Err(e) = player_guard.stop().await {
                                         eprintln!("Failed to stop player: {}", e);
                                     }
-                                    sleep(Duration::from_millis(1000)).await;
                                     if let Err(e) =
                                         player_guard.playback_next(&next_episode.path).await
                                     {
@@ -316,7 +312,6 @@ pub async fn monitor_playback(
                                     if let Err(e) = player_guard.stop().await {
                                         eprintln!("Failed to stop player: {}", e);
                                     }
-                                    sleep(Duration::from_millis(1000)).await;
                                     if let Err(e) =
                                         player_guard.playback_prev(&prev_episode.path).await
                                     {

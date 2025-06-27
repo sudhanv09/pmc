@@ -4,8 +4,6 @@ use crate::library::{MediaLibrary, MediaType};
 use crate::mpv::{Player, spawn_mpv};
 use anyhow::Result;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::Duration;
 use tokio::sync::Mutex;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
@@ -14,7 +12,6 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
 
     let socket_name = "/tmp/pmc-mpv.sock";
     spawn_mpv(socket_name).expect("Failed to spawn MPV");
-    sleep(Duration::from_secs(1));
 
     let player = Arc::new(Mutex::new(Player::init(socket_name).await?));
 
