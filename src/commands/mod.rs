@@ -3,3 +3,4 @@ pub mod play;
 pub mod recent;
 pub mod resume;
 pub mod shared;
+pub mod sync;

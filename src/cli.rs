@@ -23,6 +23,7 @@ pub enum Commands {
     Recent,
     Play,
     Resume,
+    Sync,
 }
 
 impl Commands {
@@ -32,6 +33,7 @@ impl Commands {
             Commands::Recent => commands::recent::execute(index).await,
             Commands::Play => commands::play::execute(index).await,
             Commands::Resume => commands::resume::execute(index).await,
+            Commands::Sync => commands::sync::execute(),
         }
     }
 }
