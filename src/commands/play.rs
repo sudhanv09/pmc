@@ -1,7 +1,9 @@
 use crate::cli::PlayArgs;
 use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback, start_playback};
 use crate::db;
-use crate::library::{MediaLibrary, MediaType};
+use crate::library::{MediaLibrary};
+use crate::state::{MediaType, WatchEntry};
+use crate::indexer::Episode;
 use crate::mpv::init_player;
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -137,9 +139,9 @@ async fn play_show(index: &MediaLibrary, db: &db::Db) -> Result<()> {
 }
 
 fn select_episode_to_play<'a>(
-    episodes: &'a [crate::indexer::Episode],
-    history: &[crate::library::WatchEntry],
-) -> Option<&'a crate::indexer::Episode> {
+    episodes: &'a [Episode],
+    history: &[WatchEntry],
+) -> Option<&'a Episode> {
     let last = history
         .iter()
         .filter(|entry| entry.media_type == MediaType::Show)

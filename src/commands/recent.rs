@@ -1,7 +1,8 @@
 use crate::db;
-use crate::library::{MediaLibrary, MediaType};
+use crate::library::{MediaLibrary};
 use anyhow::Result;
 use colored::Colorize;
+use crate::state::MediaType;
 
 pub async fn execute(index: &MediaLibrary) -> Result<()> {
     let db = db::Db::get();

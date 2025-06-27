@@ -1,4 +1,4 @@
-use crate::library::{MediaType, WatchEntry};
+use crate::state::{MediaType, WatchEntry};
 use anyhow::Context;
 use anyhow::{Result, bail};
 use chrono::{DateTime, Local};

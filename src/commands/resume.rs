@@ -1,6 +1,7 @@
 use crate::commands::shared::{flatten_show, get_next_episode, monitor_playback, start_playback};
 use crate::db;
-use crate::library::{MediaLibrary, MediaType};
+use crate::library::{MediaLibrary};
+use crate::state::MediaType;
 use crate::mpv::{init_player};
 use anyhow::Result;
 

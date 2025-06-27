@@ -1,4 +1,4 @@
-use crate::library::{PlaybackEvent, SharedState};
+use crate::state::{PlaybackEvent, SharedState};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;

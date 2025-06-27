@@ -10,6 +10,7 @@ mod indexer;
 mod library;
 mod mpv;
 mod utils;
+mod state;
 
 #[tokio::main]
 async fn main() -> Result<()> {

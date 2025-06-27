@@ -1,13 +1,14 @@
 use crate::db::Db;
 use crate::indexer::{Episode, Tv};
-use crate::library::{MediaLibrary, MediaType, PlaybackEvent, PlaybackState, SharedState};
+use crate::library::MediaLibrary;
 use crate::mpv::Player;
+use crate::state::{MediaType, PlaybackEvent, PlaybackState, SharedState};
+use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use anyhow::Result;
 
 pub fn flatten_show(show: &Tv) -> Vec<Episode> {
     let mut entries = Vec::new();
@@ -105,7 +106,6 @@ async fn play_next(
                         eprintln!("Failed to stop player: {}", e);
                     }
                 }
-
 
                 {
                     let mut player_guard = player.lock().await;
