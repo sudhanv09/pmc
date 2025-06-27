@@ -1,5 +1,6 @@
 use crate::indexer;
 use crate::indexer::{Episode, Library, Season, Tv};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use colored::Colorize;
 use dialoguer::Input;
@@ -24,6 +25,22 @@ pub struct MediaLibrary {
 
 impl MediaLibrary {
     pub fn new(movie_dir: String, tv_dir: String, library: Library) -> Self {
+        let indexed_at = Local::now();
+        let (show_map, episode_map) = Self::build_maps(&library);
+
+        Self {
+            movie_dir,
+            tv_dir,
+            indexed_at,
+            library,
+            show_map,
+            episode_map,
+        }
+    }
+
+    fn build_maps(
+        library: &Library,
+    ) -> (HashMap<String, Tv>, HashMap<String, (Tv, Season, Episode)>) {
         let mut show_map = HashMap::new();
         let mut episode_map = HashMap::new();
 
@@ -39,61 +56,95 @@ impl MediaLibrary {
             }
         }
 
-        Self {
-            movie_dir,
-            tv_dir,
-            indexed_at: Local::now(),
-            library,
-            show_map,
-            episode_map,
-        }
+        (show_map, episode_map)
     }
 
     pub fn rebuild_maps(&mut self) {
-        self.show_map.clear();
-        self.episode_map.clear();
+        let (show_map, episode_map) = Self::build_maps(&self.library);
+        self.show_map = show_map;
+        self.episode_map = episode_map;
+    }
 
-        for show in &self.library.shows {
-            self.show_map.insert(show.id.clone(), show.clone());
-            for season in &show.seasons {
-                for episode in &season.episodes {
-                    self.episode_map.insert(
-                        episode.id.clone(),
-                        (show.clone(), season.clone(), episode.clone()),
-                    );
-                }
-            }
-        }
+    pub fn get_episode(&self, episode_id: &str) -> Option<&(Tv, Season, Episode)> {
+        self.episode_map.get(episode_id)
+    }
+
+    pub fn get_show(&self, show_id: &str) -> Option<&Tv> {
+        self.show_map.get(show_id)
     }
 }
 
 pub async fn load_or_configure_library() -> Result<MediaLibrary> {
     let index_path = "./index.json";
 
-    if Path::new(index_path).exists() {
-        let data = fs::read_to_string(index_path)?;
+    if let Ok(data) = fs::read_to_string(index_path) {
         let mut library: MediaLibrary = serde_json::from_str(&data)?;
         library.rebuild_maps();
-        Ok(library)
-    } else {
-        println!("{}", "Welcome to pmc!".blue());
+        return Ok(library);
+    }
 
-        let movie_dir: String = Input::with_theme(&ColorfulTheme::default())
+    println!("{}", "Welcome to pmc!".blue());
+
+    let (movie_dir, tv_dir) = prompt_for_dirs()?;
+    let library = indexer::index(movie_dir.clone(), tv_dir.clone());
+    let media_library = MediaLibrary::new(movie_dir, tv_dir, library);
+
+    let serialized = serde_json::to_string_pretty(&media_library)?;
+    fs::write(index_path, serialized)?;
+
+    Ok(media_library)
+}
+
+fn validate_dir(path: &str) -> Result<String> {
+    let normed = shellexpand::tilde(path).to_string();
+    let path = Path::new(&normed);
+
+    if !path.exists() {
+        anyhow::bail!("path does not exist");
+    }
+
+    if !path.is_dir() {
+        anyhow::bail!("path is not a directory");
+    }
+
+    let is_empty = fs::read_dir(path)?.next().is_none();
+    if is_empty {
+        println!(
+            "{}",
+            format!("Warning: {} is empty.", path.display()).yellow()
+        );
+    }
+
+    let absolute = fs::canonicalize(path)?;
+    Ok(absolute.to_string_lossy().into_owned())
+}
+
+fn prompt_for_dirs() -> Result<(String, String)> {
+    let movie_dir = loop {
+        let input: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter movie directory")
             .interact_text()
             .context("Failed to read movie directory")?;
 
-        let tv_dir: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Enter tv directory")
+        if let Err(err) = validate_dir(&input) {
+            println!("{}", format!("Invalid movie directory: {}", err).red());
+        } else {
+            break input;
+        }
+    };
+
+    let tv_dir = loop {
+        let input: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt("Enter TV directory")
             .interact_text()
-            .context("Failed to read shows directory")?;
+            .context("Failed to read TV directory")?;
 
-        let library = indexer::index(movie_dir.clone(), tv_dir.clone());
-        let media_library = MediaLibrary::new(movie_dir, tv_dir, library);
+        if let Err(err) = validate_dir(&input) {
+            println!("{}", format!("Invalid TV directory: {}", err).red());
+        } else {
+            break input;
+        }
+    };
 
-        let serialized = serde_json::to_string_pretty(&media_library)?;
-        fs::write(index_path, serialized)?;
-
-        Ok(media_library)
-    }
+    Ok((movie_dir, tv_dir))
 }

@@ -1,5 +1,5 @@
 use crate::cli::App;
-use crate::library::load_or_configure_library;
+use crate::library::{load_or_configure_library, MediaLibrary};
 use clap::Parser;
 use anyhow::{Result, Context};
 
@@ -14,7 +14,7 @@ mod state;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let index = load_or_configure_library().await.context("Failed to load library")?;
+    let index: MediaLibrary = load_or_configure_library().await.context("Failed to load library")?;
 
     db::Db::init("./pmc.db")
         .await
