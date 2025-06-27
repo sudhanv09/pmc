@@ -1,24 +1,33 @@
+use crate::cli::PlayArgs;
 use crate::commands::shared::{acquire_get_state, flatten_show, monitor_playback, start_playback};
 use crate::db;
 use crate::library::{MediaLibrary, MediaType};
-use crate::mpv::{init_player};
+use crate::mpv::init_player;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
 
-pub async fn execute(index: &MediaLibrary) -> Result<()> {
+pub async fn execute(index: &MediaLibrary, args: &PlayArgs) -> Result<()> {
     let db = db::Db::get();
 
-    let media_select = &["Movies", "Tv"];
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("What do you want to watch?")
-        .items(&media_select[..])
-        .interact()?;
+    if args.movie {
+        play_movie(index, db).await?;
+        Ok(())
+    } else if args.tv {
+        play_show(index, db).await?;
+        Ok(())
+    } else {
+        let media_select = &["Movies", "Tv"];
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("What do you want to watch?")
+            .items(&media_select[..])
+            .interact()?;
 
-    match selection {
-        0 => play_movie(index, db).await,
-        1 => play_show(index, db).await,
-        _ => Ok(()),
+        match selection {
+            0 => play_movie(index, db).await,
+            1 => play_show(index, db).await,
+            _ => Ok(()),
+        }
     }
 }
 
