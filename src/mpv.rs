@@ -179,8 +179,6 @@ impl Player {
         state: SharedState,
         tx: UnboundedSender<PlaybackEvent>,
     ) {
-        println!("Starting playback monitoring...");
-
         {
             let mut player_guard = player.lock().await;
             if player_guard.wait_mpv().await {
@@ -326,7 +324,6 @@ impl Player {
                                     if let Some(message) = msg_event.args.first() {
                                         match message.as_str() {
                                             "pmc-quit" => {
-                                                println!("Saving progress before quitting...");
                                                 let _ = tx.send(PlaybackEvent::RequestQuit);
                                             }
                                             "pmc-next" => {

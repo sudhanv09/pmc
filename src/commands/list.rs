@@ -13,7 +13,7 @@ pub async fn execute(index: &MediaLibrary) -> Result<()> {
     println!("{}", "Shows".green());
     println!("------");
     for item in &index.library.shows {
-        println!("{}", &item.name);
+        println!("{} - {} seasons", &item.name, &item.seasons.len());
     }
     Ok(())
 }
