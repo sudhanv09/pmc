@@ -1,14 +1,20 @@
-import std/[asyncdispatch, json, asyncnet, net, os]
+import std/[asyncdispatch, json, asyncnet, net, os, options]
 
-const SOCKET_PATH* = "/tmp/mpv-socket"
-
-var mpvSocket: AsyncSocket
+const 
+  SOCKET_PATH* = "/tmp/mpv-socket"
+  mpvSocket: AsyncSocket
 
 type
   MpvResponse* = object
     data: string
     request_id: int
     error: string
+
+  MpvEvent* = object
+    event: string
+    id: int
+    name: string
+    data: JsonNode
 
   MpvState* = ref object
     playing: bool
@@ -18,9 +24,8 @@ type
     should_stop: bool
 
 
-proc sendCommand(cmd: seq[string]): Future[JsonNode] {.async.} =
-  let jsonCmd = %* {"command": cmd}
-  let msg = $jsonCmd & "\n"
+proc sendCommand(cmd: JsonNode): Future[JsonNode] {.async.} =
+  let msg = $cmd & "\n"
   await mpvSocket.send(msg)
   let response = await mpvSocket.recvLine()
   if response.len == 0:
@@ -28,18 +33,26 @@ proc sendCommand(cmd: seq[string]): Future[JsonNode] {.async.} =
   result = parseJson(response)
 
 proc get_property(prop: string): Future[JsonNode] {.async.} =
-  await sendCommand(@["get_property", prop])
+  let cmd = %* { "command": ["get_property", prop] }
+  return await sendCommand(cmd)
+
+proc observe_property(name: string, id: int) {.async.} =
+  let cmd = %* { "command": ["observe_property", id, name] }
+  discard await sendCommand(cmd)
 
 proc seek(pos: string) {.async.} =
-  await sendCommand(@["seek", pos, "absolute-percent"])
+  let cmd = %* { "command": ["seek", pos, "absolute-percent"] }
+  discard await sendCommand(cmd)
 
 proc user_quit() {.async.} =
-  await sendCommand(@["quit"])
+  let cmd = %* { "command": ["quit"] }
+  discard await sendCommand(cmd)
 
 proc user_stop() {.async.} =
-  await sendCommand(@["stop"])
+  let cmd = %* { "command": ["stop"] }
+  discard await sendCommand(cmd)
 
-proc mpv_start_monitoring(state: MpvState) {.async.} = 
+proc mpv_start_monitoring() {.async.} = 
   while true:
     let line = await mpvSocket.recvLine()
     if line.len == 0:
@@ -47,9 +60,25 @@ proc mpv_start_monitoring(state: MpvState) {.async.} =
       quit(1)
 
     try:
+      let evt = parseJson(line)
+      if evt.hasKey("event"):
+        let mpv_event = evt.to(MpvEvent)
+        case mpv_event.event:
+          of "property-change":
+            case mpv_event.name:
+              of "pause":
+                echo "paused playback"
+              of "percent-pos":
+                echo mpv_event.data
+              of "eof-reached":
+                echo "playback finished"
+              # else:
+              #   echo "here"
+          else:
+            echo mpv_event.event
 
     except CatchableError as e:
-      echo "Failed to parse line", line, " error: ", e
+      echo "Failed to parse line", line, " error: ", e.msg
 
 proc spawn_mpv*() =
   discard
@@ -59,4 +88,8 @@ proc mpv_init*() {.async.} =
   await mpvSocket.connectUnix(SOCKET_PATH)
 
 proc play_file*(name: string) {.async.} =
+  let cmd = %* { "command": ["loadfile", name, "replace"] }
+  discard await sendCommand(cmd)
+
+
   await sendCommand(@["loadfile", name, "replace"])
