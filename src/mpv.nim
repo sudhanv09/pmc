@@ -10,12 +10,6 @@ type
     request_id: int
     error: string
 
-  MpvEvent = object
-    event: string
-    id: int
-    name: string
-    data: JsonNode
-
   PlaybackStatus* = enum
     Started,
     Stopped,
@@ -105,10 +99,16 @@ proc mpv_start_monitoring() {.async.} =
           updateState(status = Exited)
         of "end-file":
           updateState(status = FileEnded)
-        of "playlist-nexte":
+        of "playlist-next":
           updateState(status = RequestedNext)
         of "playlist-prev":
           updateState(status = RequestedPrev)
+        of "client-message":
+          let args = evt["args"]
+          if args.kind == JArray and args.len > 0:
+            let msg == args[0].getStr()
+            if msg == "pmc-quit":
+              updateState(status = RequestedQuit)
         else:
           discard
     except CatchableError as e:
