@@ -5,23 +5,45 @@ const
   mpvSocket: AsyncSocket
 
 type
-  MpvResponse* = object
+  MpvResponse = object
     data: string
     request_id: int
     error: string
 
-  MpvEvent* = object
+  MpvEvent = object
     event: string
     id: int
     name: string
     data: JsonNode
 
+  PlaybackStatus* = enum
+    Started,
+    Stopped,
+    Resumed,
+    Paused,
+    Completed,
+    FileEnded,
+    Exited,
+    RequestedNext,
+    RequestedPrev, 
+    RequestedQuit
+
   MpvState* = ref object
-    playing: bool
+    status: PlaybackStatus
     filename: string
-    paused: bool
     position: float
     should_stop: bool
+
+# State manager
+var currentState* = MpvState(status: Started, filename: "", position: 0, should_stop: false)
+
+proc getState*(): MpvState =
+  return currentState
+
+proc updateState(status: PlaybackStatus = currentState.status,
+                 filename: string = currentState.filename,
+                 position: float = currentState.position) =
+  currentState = MpvState(status: status, filename: filename, position: position)
 
 
 proc sendCommand(cmd: JsonNode): Future[JsonNode] {.async.} =
@@ -62,23 +84,36 @@ proc mpv_start_monitoring() {.async.} =
     try:
       let evt = parseJson(line)
       if evt.hasKey("event"):
-        let mpv_event = evt.to(MpvEvent)
-        case mpv_event.event:
-          of "property-change":
-            case mpv_event.name:
-              of "pause":
-                echo "paused playback"
-              of "percent-pos":
-                echo mpv_event.data
-              of "eof-reached":
-                echo "playback finished"
-              # else:
-              #   echo "here"
-          else:
-            echo mpv_event.event
-
+        let ev = evt["event"].getStr()
+        case ev
+        of "property-change":
+          let name = evt["name"].getStr()
+          if name == "pause":
+            let paused = evt["data"].getBool(false)
+            if paused:
+              updateState(status = Paused)
+            else:
+              updateState(status = Resumed)
+          elif name == "percent-pos":
+            let pos = evt["data"].getFloat()
+            updateState(position = pos)
+            if pos >= 98:
+              updateState(status = Completed, position = pos)
+          elif name == "eof-reached":
+            updateState(status = FileEnded, position = 100)
+        of "shutdown":
+          updateState(status = Exited)
+        of "end-file":
+          updateState(status = FileEnded)
+        of "playlist-nexte":
+          updateState(status = RequestedNext)
+        of "playlist-prev":
+          updateState(status = RequestedPrev)
+        else:
+          discard
     except CatchableError as e:
-      echo "Failed to parse line", line, " error: ", e.msg
+      echo "Failed to parse line ", line, " error: ", e.msg
+
 
 proc spawn_mpv*() =
   discard
@@ -91,5 +126,21 @@ proc play_file*(name: string) {.async.} =
   let cmd = %* { "command": ["loadfile", name, "replace"] }
   discard await sendCommand(cmd)
 
+proc buildPlaylist*(files: seq[string]) {.async.} =
+  for f in files:
+    let cmd = %* { "command": ["loadfile", f, "append"] }
+    discard await sendCommand(cmd)
 
-  await sendCommand(@["loadfile", name, "replace"])
+
+
+proc run() {.async.} = 
+  await mpv_init()
+  await play_file("")
+  sleep 1500
+  await observe_property("pause", 1)
+  await observe_property("percent-pos", 2)
+  await observe_property("eof-reached", 3)
+  await observe_property("playlist-pos", 4)
+  await mpv_start_monitoring()
+
+waitFor run()
