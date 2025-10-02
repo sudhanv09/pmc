@@ -11,3 +11,6 @@ bin           = @["pmc"]
 # Dependencies
 
 requires "nim >= 2.0"
+
+requires "argparse >= 4.0.2"
+requires "nanoid >= 0.2.0"
