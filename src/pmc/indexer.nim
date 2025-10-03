@@ -1,5 +1,6 @@
-import std/[times, paths, nre, parseutils, dirs, sequtils, strutils, os]
+import std/[times, paths, dirs, sequtils, strutils, os]
 import nanoid
+import utils
 
 type
   Library* = object
@@ -29,25 +30,6 @@ type
     path*: Path
     created_at*: DateTime
     size*: int64
-
-proc guessSeason*(item: string): int =
-  let patterns = [
-    re"(?i)S(\d{1,2})E\d{1,2}", # S01E02
-    re"(?i)Season[ _]?(\d{1,2})", # Season 2
-    re"(?i)S(\d{1,2})", # S1
-  ]
-
-  for pat in patterns:
-    if item.match(pat).isSome:
-      let m = item.match(pat).get
-      try:
-        var season: int
-        discard parseInt(m.captures[0], season)
-        return season
-      except ValueError:
-        discard
-
-  return 0
 
 proc isMediaFile(path: string): bool =
   let validExts = @[".mp4", ".mkv", ".mov", ".avi"]
@@ -114,3 +96,8 @@ proc index_shows(dir: Path): seq[Show] =
 proc create_index*(dir: string): Library =
   result.Movies = index_movies(Path(dir / "Movies"))
   result.Shows = index_shows(Path(dir / "TV"))
+
+let result = create_index("/hdd/media")
+
+let first = result.Shows[0..5]
+echo first
