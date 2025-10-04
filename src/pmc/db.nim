@@ -1,5 +1,6 @@
-import db_sqlite, std/[strutils, times]
+import db_sqlite, std/[strutils, times, os]
 import nanoid
+import pmc/indexer
 
 type WatchHistory* = object
   id*: string
@@ -11,8 +12,12 @@ type WatchHistory* = object
 
 var db: DbConn
 
-proc db_init*(path: string = "pmc.db") =
+proc db_init*(path: string = "pmc.db"): DbConn =
+  let db_exists = fileExists(path)
   db = open(path, "", "", "")
+  if not db_exists:
+    db_create()
+  return db
 
 proc get_db*(): DbConn =
   return db
@@ -50,7 +55,7 @@ proc db_create*() =
       FOREIGN KEY(show_id) REFERENCES shows(id)
     );
     
-    CREATE TABLE IF NOT EXISTS episodes (
+        CREATE TABLE IF NOT EXISTS episodes (
       id TEXT PRIMARY KEY,
       season_id TEXT NOT NULL,
       name TEXT NOT NULL,
@@ -114,4 +119,78 @@ proc save_media_playback(
 
   let entry = WatchHistory(
     id: nanoid(10), media_id, media_type, progress, is_completed, watched_at: now()
+  )
+
+# Library CRUD
+proc get_all_movies*(): seq[Movie] =
+  for row in fastRows(db, "SELECT id, name, path, size, created_at FROM movies"):
+    result.add Movie(
+      id: row[0],
+      name: row[1],
+      path: Path(row[2]),
+      size: parseInt(row[3]),
+      created_at: parse(row[4]),
+    )
+
+proc get_all_shows*(): seq[Show] =
+  var shows: seq[Show]
+  for row in fastRows(db, "SELECT id, name FROM shows"):
+    var show = Show(id: row[0], name: row[1], seasons: @[])
+    for season_row in fastRows(
+      db,
+      "SELECT id, number FROM seasons WHERE show_id = ?",
+      show.id,
+    ):
+      var season = Season(
+        id: season_row[0], number: parseInt(season_row[1]), episodes: @[]
+      )
+      for episode_row in fastRows(
+        db,
+        "SELECT id, name, path, size, created_at FROM episodes WHERE season_id = ?",
+        season.id,
+      ):
+        season.episodes.add Episode(
+          id: episode_row[0],
+          name: episode_row[1],
+          path: Path(episode_row[2]),
+          size: parseInt(episode_row[3]),
+          created_at: parse(episode_row[4]),
+        )
+      show.seasons.add(season)
+    shows.add(show)
+  return shows
+
+proc save_movie*(movie: Movie) =
+  exec(
+    db,
+    "INSERT OR REPLACE INTO movies (id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?)",
+    movie.id,
+    movie.name,
+    $movie.path,
+    $movie.size,
+    $movie.created_at,
+  )
+
+proc save_show*(show: Show) =
+  exec(db, "INSERT OR REPLACE INTO shows (id, name) VALUES (?, ?)", show.id, show.name)
+
+proc save_season*(season: Season, show_id: string) =
+  exec(
+    db,
+    "INSERT OR REPLACE INTO seasons (id, show_id, number) VALUES (?, ?, ?)",
+    season.id,
+    show_id,
+    $season.number,
+  )
+
+proc save_episode*(episode: Episode, season_id: string) =
+  exec(
+    db,
+    "INSERT OR REPLACE INTO episodes (id, season_id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    episode.id,
+    season_id,
+    episode.name,
+    $episode.path,
+    $episode.size,
+    $episode.created_at,
   )
