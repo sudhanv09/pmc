@@ -1,27 +1,14 @@
-import std/[asyncdispatch, options, times, os]
+import std/[asyncdispatch, strformat, times, os]
 import mpv, db
 type
-  MediaKind = enum
+  MediaKind* = enum
     MovieKind, EpisodeKind
 
-  MediaItem = object
-    id: string
-    name: string
-    path: string
-    kind: MediaKind
-
-proc play_media*(item: MediaItem) {.async.} =
-  echo "Now playing: ", item.name
-  
-  let mpv_process = spawn_mpv()
-  sleep(1000)
-  
-  await mpv_init()
-  await mpv.play_file(item.path)
-  
-  updateState(status = Started, filename = item.path, position = 0)
-
-  asyncCheck monitor_playback(item)
+  MediaItem* = object
+    id*: string
+    name*: string
+    path*: string
+    kind*: MediaKind
 
 proc monitor_playback(item: MediaItem) {.async.} = 
     while true:
@@ -47,3 +34,16 @@ proc monitor_playback(item: MediaItem) {.async.} =
                 if state.position > 0:
                     echo fmt"Playing at {state.position:.2f}%"
                 discard
+
+proc play_media*(item: MediaItem) {.async.} =
+  echo "Now playing: ", item.name
+  
+  let mpv_process = spawn_mpv()
+  sleep(1000)
+  
+  await mpv_init()
+  await mpv.play_file(item.path)
+  
+  updateState(status = Started, filename = item.path, position = 0)
+
+  asyncCheck monitor_playback(item)

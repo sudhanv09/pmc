@@ -1,4 +1,4 @@
-import std/[asyncdispatch, json, asyncnet, net, os, options, osproc]
+import std/[asyncdispatch, json, asyncnet, net, options, osproc]
 
 var mpvSocket: AsyncSocket = nil
 const 
@@ -23,10 +23,10 @@ type
     RequestedQuit
 
   MpvState* = ref object
-    status: PlaybackStatus
-    filename: string
-    position: float
-    should_stop: bool
+    status*: PlaybackStatus
+    filename*: string
+    position*: float
+    should_stop*: bool
 
 # State manager
 var currentState* = MpvState(status: Started, filename: "", position: 0, should_stop: false)

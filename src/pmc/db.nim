@@ -75,7 +75,7 @@ proc db_init*(path: string = "pmc.db"): DbConn =
   return db
 
 # Watch history CRUD
-proc save_state*(wh: WatchHistory) =
+proc save_state(wh: WatchHistory) =
   exec(
     db,
     sql"""INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at) VALUES (?, ?, ?, ?, ?, ?)""",
@@ -117,7 +117,7 @@ proc get_recent_watches*(limit: int = 10): seq[WatchHistory] =
       watchedAt: row[5],
     )
 
-proc save_media_playback(media_id: string, media_type: string, progress: int, is_completed: bool) =
+proc save_media_playback*(media_id: string, media_type: string, progress: int, is_completed: bool) =
   if progress < 0 and not is_completed:
     return
 
@@ -125,6 +125,8 @@ proc save_media_playback(media_id: string, media_type: string, progress: int, is
   let entry = WatchHistory(
     id: watch_id, media_id: media_id, media_type: media_type, progress: progress, complete: is_completed, watched_at: $now()
   )
+  
+  save_state(entry)
 
 # Library CRUD
 proc get_all_movies*(): seq[Movie] =
