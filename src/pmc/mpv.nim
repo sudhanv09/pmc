@@ -1,8 +1,8 @@
-import std/[asyncdispatch, json, asyncnet, net, os, options]
+import std/[asyncdispatch, json, asyncnet, net, os, options, osproc]
 
+var mpvSocket: AsyncSocket = nil
 const 
   SOCKET_PATH = "/tmp/mpv-socket"
-  mpvSocket: AsyncSocket
 
 type
   MpvResponse = object
@@ -106,7 +106,7 @@ proc mpv_start_monitoring() {.async.} =
         of "client-message":
           let args = evt["args"]
           if args.kind == JArray and args.len > 0:
-            let msg == args[0].getStr()
+            let msg = args[0].getStr()
             if msg == "pmc-quit":
               updateState(status = RequestedQuit)
         else:
@@ -115,9 +115,15 @@ proc mpv_start_monitoring() {.async.} =
       echo "Failed to parse line ", line, " error: ", e.msg
 
 
-proc spawn_mpv*() =
-  discard
-
+proc spawn_mpv*(socket_path: string = SOCKET_PATH): Process = 
+  var mpv_args: seq[string] = @[
+    "--input-ipc-server=" & socket_path,
+    "--idle=yes",
+    "--force-window",
+  ]
+    
+  return startProcess("mpv", args = mpv_args, options = {poUsePath})
+  
 proc mpv_init*() {.async.} =
   mpvSocket = newAsyncSocket(Domain.AF_UNIX, SockType.SOCK_STREAM, Protocol.IPPROTO_IP)
   await mpvSocket.connectUnix(SOCKET_PATH)
