@@ -13,7 +13,7 @@ type
     name*: string
     path*: Path
     created_at*: DateTime
-    size: int64
+    size*: int64
 
   Show* = object
     id*: string

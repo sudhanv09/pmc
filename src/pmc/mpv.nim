@@ -34,7 +34,7 @@ var currentState* = MpvState(status: Started, filename: "", position: 0, should_
 proc getState*(): MpvState =
   return currentState
 
-proc updateState(status: PlaybackStatus = currentState.status,
+proc updateState*(status: PlaybackStatus = currentState.status,
                  filename: string = currentState.filename,
                  position: float = currentState.position) =
   currentState = MpvState(status: status, filename: filename, position: position)

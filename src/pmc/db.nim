@@ -1,6 +1,7 @@
-import db_sqlite, std/[strutils, times, os]
+import std/[strutils, times, os, paths]
+import db_connector/db_sqlite
 import nanoid
-import pmc/indexer
+import indexer
 
 type WatchHistory* = object
   id*: string
@@ -12,20 +13,13 @@ type WatchHistory* = object
 
 var db: DbConn
 
-proc db_init*(path: string = "pmc.db"): DbConn =
-  let db_exists = fileExists(path)
-  db = open(path, "", "", "")
-  if not db_exists:
-    db_create()
-  return db
-
 proc get_db*(): DbConn =
   return db
 
 proc db_create*() =
   exec(
     db,
-    """
+    sql"""
     CREATE TABLE IF NOT EXISTS watch_history (
       id TEXT PRIMARY KEY,
       media_id TEXT NOT NULL,
@@ -68,11 +62,18 @@ proc db_create*() =
   """,
   )
 
+proc db_init*(path: string = "pmc.db"): DbConn =
+  let db_exists = fileExists(path)
+  db = open(path, "", "", "")
+  if not db_exists:
+    db_create()
+  return db
+
 # Watch history CRUD
 proc save_state*(wh: WatchHistory) =
   exec(
     db,
-    "INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at) VALUES (?, ?, ?, ?, ?, ?)",
+    sql"""INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at) VALUES (?, ?, ?, ?, ?, ?)""",
     wh.id,
     wh.mediaId,
     wh.mediaType,
@@ -84,7 +85,7 @@ proc save_state*(wh: WatchHistory) =
 proc get_media_history*(mediaId: string): seq[WatchHistory] =
   for row in fastRows(
     db,
-    "SELECT id, media_id, media_type, progress, complete, watched_at FROM watch_history WHERE media_id = ?",
+    sql"""SELECT id, media_id, media_type, progress, complete, watched_at FROM watch_history WHERE media_id = ?""",
     mediaId,
   ):
     result.add WatchHistory(
@@ -99,7 +100,7 @@ proc get_media_history*(mediaId: string): seq[WatchHistory] =
 proc get_recent_watches*(limit: int = 10): seq[WatchHistory] =
   for row in fastRows(
     db,
-    "SELECT id, media_id, media_type, progress, complete, watched_at FROM watch_history ORDER BY watched_at DESC LIMIT ?",
+    sql"""SELECT id, media_id, media_type, progress, complete, watched_at FROM watch_history ORDER BY watched_at DESC LIMIT ?""",
     $limit,
   ):
     result.add WatchHistory(
@@ -111,34 +112,33 @@ proc get_recent_watches*(limit: int = 10): seq[WatchHistory] =
       watchedAt: row[5],
     )
 
-proc save_media_playback(
-    media_id: string, media_type: string, progress: int, is_completed: bool
-) =
-  if progress < 0.0 and !is_completed:
+proc save_media_playback(media_id: string, media_type: string, progress: int, is_completed: bool) =
+  if progress < 0 and not is_completed:
     return
 
+  let watch_id = generate(alphabet="abcdefghijklmnopqrstuvwxyz", size=7)
   let entry = WatchHistory(
-    id: nanoid(10), media_id, media_type, progress, is_completed, watched_at: now()
+    id: watch_id, media_id: media_id, media_type: media_type, progress: progress, complete: is_completed, watched_at: $now()
   )
 
 # Library CRUD
 proc get_all_movies*(): seq[Movie] =
-  for row in fastRows(db, "SELECT id, name, path, size, created_at FROM movies"):
+  for row in fastRows(db, sql"""SELECT id, name, path, size, created_at FROM movies"""):
     result.add Movie(
       id: row[0],
       name: row[1],
       path: Path(row[2]),
       size: parseInt(row[3]),
-      created_at: parse(row[4]),
+      created_at: parse(row[4], "yyyy-MM-dd"),
     )
 
 proc get_all_shows*(): seq[Show] =
   var shows: seq[Show]
-  for row in fastRows(db, "SELECT id, name FROM shows"):
+  for row in fastRows(db, sql"""SELECT id, name FROM shows"""):
     var show = Show(id: row[0], name: row[1], seasons: @[])
     for season_row in fastRows(
       db,
-      "SELECT id, number FROM seasons WHERE show_id = ?",
+      sql"""SELECT id, number FROM seasons WHERE show_id = ?""",
       show.id,
     ):
       var season = Season(
@@ -146,7 +146,7 @@ proc get_all_shows*(): seq[Show] =
       )
       for episode_row in fastRows(
         db,
-        "SELECT id, name, path, size, created_at FROM episodes WHERE season_id = ?",
+        sql"""SELECT id, name, path, size, created_at FROM episodes WHERE season_id = ?""",
         season.id,
       ):
         season.episodes.add Episode(
@@ -154,7 +154,7 @@ proc get_all_shows*(): seq[Show] =
           name: episode_row[1],
           path: Path(episode_row[2]),
           size: parseInt(episode_row[3]),
-          created_at: parse(episode_row[4]),
+          created_at: parse(episode_row[4], "yyyy-MM-dd"),
         )
       show.seasons.add(season)
     shows.add(show)
@@ -163,7 +163,7 @@ proc get_all_shows*(): seq[Show] =
 proc save_movie*(movie: Movie) =
   exec(
     db,
-    "INSERT OR REPLACE INTO movies (id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?)",
+    sql"""INSERT OR REPLACE INTO movies (id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?)""",
     movie.id,
     movie.name,
     $movie.path,
@@ -172,12 +172,12 @@ proc save_movie*(movie: Movie) =
   )
 
 proc save_show*(show: Show) =
-  exec(db, "INSERT OR REPLACE INTO shows (id, name) VALUES (?, ?)", show.id, show.name)
+  exec(db, sql"""INSERT OR REPLACE INTO shows (id, name) VALUES (?, ?)""", show.id, show.name)
 
 proc save_season*(season: Season, show_id: string) =
   exec(
     db,
-    "INSERT OR REPLACE INTO seasons (id, show_id, number) VALUES (?, ?, ?)",
+    sql"""INSERT OR REPLACE INTO seasons (id, show_id, number) VALUES (?, ?, ?)""",
     season.id,
     show_id,
     $season.number,
@@ -186,7 +186,7 @@ proc save_season*(season: Season, show_id: string) =
 proc save_episode*(episode: Episode, season_id: string) =
   exec(
     db,
-    "INSERT OR REPLACE INTO episodes (id, season_id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    sql"""INSERT OR REPLACE INTO episodes (id, season_id, name, path, size, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
     episode.id,
     season_id,
     episode.name,
