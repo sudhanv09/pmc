@@ -17,8 +17,7 @@ proc get_db*(): DbConn =
   return db
 
 proc db_create*() =
-  exec(
-    db,
+  db.exec(
     sql"""
     CREATE TABLE IF NOT EXISTS watch_history (
       id TEXT PRIMARY KEY,
@@ -28,7 +27,9 @@ proc db_create*() =
       complete BOOLEAN NOT NULL,
       watched_at TEXT NOT NULL
     );
+    """)
 
+  db.exec(sql"""
     CREATE TABLE IF NOT EXISTS movies (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -36,20 +37,26 @@ proc db_create*() =
       size INTEGER NOT NULL,
       created_at TEXT NOT NULL
     );
+    """)
 
+  db.exec(sql"""
     CREATE TABLE IF NOT EXISTS shows (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL
     );
+    """)
     
+  db.exec(sql"""
     CREATE TABLE IF NOT EXISTS seasons (
       id TEXT PRIMARY KEY,
       show_id TEXT NOT NULL,
       number INTEGER NOT NULL,
       FOREIGN KEY(show_id) REFERENCES shows(id)
     );
+    """)
     
-        CREATE TABLE IF NOT EXISTS episodes (
+  db.exec(sql"""
+    CREATE TABLE IF NOT EXISTS episodes (
       id TEXT PRIMARY KEY,
       season_id TEXT NOT NULL,
       name TEXT NOT NULL,
@@ -58,9 +65,7 @@ proc db_create*() =
       created_at TEXT NOT NULL,
       FOREIGN KEY(season_id) REFERENCES seasons(id)
     );
-
-  """,
-  )
+    """)
 
 proc db_init*(path: string = "pmc.db"): DbConn =
   let db_exists = fileExists(path)
@@ -129,7 +134,7 @@ proc get_all_movies*(): seq[Movie] =
       name: row[1],
       path: Path(row[2]),
       size: parseInt(row[3]),
-      created_at: parse(row[4], "yyyy-MM-dd"),
+      created_at: parse(row[4], "yyyy-MM-dd'T'HH:mm:sszzz"),
     )
 
 proc get_all_shows*(): seq[Show] =
@@ -154,7 +159,7 @@ proc get_all_shows*(): seq[Show] =
           name: episode_row[1],
           path: Path(episode_row[2]),
           size: parseInt(episode_row[3]),
-          created_at: parse(episode_row[4], "yyyy-MM-dd"),
+          created_at: parse(episode_row[4], "yyyy-MM-dd'T'HH:mm:sszzz"),
         )
       show.seasons.add(season)
     shows.add(show)
