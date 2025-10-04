@@ -1,4 +1,5 @@
 import std/[times, paths, dirs, sequtils, strutils, os]
+import checksums/sha1
 import nanoid
 import utils
 
@@ -61,7 +62,7 @@ proc index_shows(dir: Path): seq[Show] =
       for _, epPath in walkDir(showDir, relative = false):
         if fileExists($epPath) and isMediaFile($epPath):
           season1.episodes.add Episode(
-            id: generate(size=10),
+            id: $secureHash($epPath),
             name: epPath.splitPath.tail.string,
             path: epPath,
             created_at: now(),
@@ -80,7 +81,7 @@ proc index_shows(dir: Path): seq[Show] =
           for _, epPath in walkDir(seasonDir):
             if fileExists($epPath) and isMediaFile($epPath):
               season.episodes.add Episode(
-                id: generate(size=10),
+                id: $secureHash($epPath),
                 name: epPath.splitPath.tail.string,
                 path: epPath,
                 created_at: now(),
@@ -96,8 +97,3 @@ proc index_shows(dir: Path): seq[Show] =
 proc create_index*(dir: string): Library =
   result.Movies = index_movies(Path(dir / "Movies"))
   result.Shows = index_shows(Path(dir / "TV"))
-
-let result = create_index("/hdd/media")
-
-let first = result.Shows[0..5]
-echo first

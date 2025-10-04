@@ -1,7 +1,7 @@
 import std/[asyncdispatch, json, asyncnet, net, os, options]
 
 const 
-  SOCKET_PATH* = "/tmp/mpv-socket"
+  SOCKET_PATH = "/tmp/mpv-socket"
   mpvSocket: AsyncSocket
 
 type
@@ -130,17 +130,3 @@ proc buildPlaylist*(files: seq[string]) {.async.} =
   for f in files:
     let cmd = %* { "command": ["loadfile", f, "append"] }
     discard await sendCommand(cmd)
-
-
-
-proc run() {.async.} = 
-  await mpv_init()
-  await play_file("")
-  sleep 1500
-  await observe_property("pause", 1)
-  await observe_property("percent-pos", 2)
-  await observe_property("eof-reached", 3)
-  await observe_property("playlist-pos", 4)
-  await mpv_start_monitoring()
-
-waitFor run()
