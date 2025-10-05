@@ -37,8 +37,9 @@ proc getState*(): MpvState =
 proc updateState*(status: PlaybackStatus = currentState.status,
                  filename: string = currentState.filename,
                  position: float = currentState.position) =
-  currentState = MpvState(status: status, filename: filename, position: position)
-
+  currentState.status = status
+  currentState.filename = filename
+  currentState.position = position
 
 proc sendCommand(cmd: JsonNode): Future[JsonNode] {.async.} =
   let msg = $cmd & "\n"
@@ -68,7 +69,11 @@ proc user_stop() {.async.} =
   let cmd = %* { "command": ["stop"] }
   discard await sendCommand(cmd)
 
-proc mpv_start_monitoring() {.async.} = 
+proc mpv_start_monitoring*() {.async.} = 
+  await observe_property("pause", 1)
+  await observe_property("percent-pos", 2)
+  await observe_property("eof-reached", 3)
+
   while true:
     let line = await mpvSocket.recvLine()
     if line.len == 0:
@@ -94,7 +99,9 @@ proc mpv_start_monitoring() {.async.} =
             if pos >= 98:
               updateState(status = Completed, position = pos)
           elif name == "eof-reached":
-            updateState(status = FileEnded, position = 100)
+            if evt["data"].getBool(false):
+              if getState().status == Started:
+                updateState(status = FileEnded, position = 100)
         of "shutdown":
           updateState(status = Exited)
         of "end-file":
