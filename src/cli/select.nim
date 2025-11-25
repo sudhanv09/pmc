@@ -1,14 +1,24 @@
-import terminal, math
+import std/[terminal, math, strutils]
 
 proc select*(options: seq[string], prompt: string = "Select an option:", columns: int = 2): int =
   var selectedIndex = 0  
   let rows = (options.len + columns - 1) div columns
+
+  var colWidths = newSeq[int](columns)
+  for col in 0..<columns:
+    var maxWidth = 0
+    for row in 0..<rows:
+      let idx = row + col * rows
+      if idx < options.len:
+        let option = options[idx].len + 4
+        maxWidth = max(maxWidth, option)
+    colWidths[col] = maxWidth
   
   hideCursor()
   
   proc render() =
+    cursorUp(rows + 1)
     for i in 0..<(rows + 1):
-      cursorUp(1)
       eraseLine()
     
     echo prompt
@@ -18,31 +28,21 @@ proc select*(options: seq[string], prompt: string = "Select an option:", columns
         let idx = row + col * rows
         if idx < options.len:
           let option = options[idx]
-          if idx == selectedIndex:
-            line.add("\e[1;32m> " & option & "\e[0m")
-          else:
-            line.add("  " & option)
-          
+          let isSelected = idx == selectedIndex
+
+          var prefix = if isSelected: "> " else: "    "
+          let label = if isSelected: "\e[1;32m" & option & "\e[0m" else: option
+          var extraPadding = colWidths[col] - (option.len + prefix.len)
+          line.add(prefix & label & spaces(extraPadding))
+
           if col < columns - 1:
             line.add("    ")
       echo line
   
   # Initial render
   echo prompt
-  for row in 0..<rows:
-    var line = ""
-    for col in 0..<columns:
-      let idx = row + col * rows
-      if idx < options.len:
-        let option = options[idx]
-        if idx == selectedIndex:
-          line.add("\e[1;32m> " & option & "\e[0m")
-        else:
-          line.add("  " & option)
-        
-        if col < columns - 1:
-          line.add("    ")
-    echo line
+  for _ in 0..<rows: echo ""
+  render()
   
   while true:
     let key = getch()

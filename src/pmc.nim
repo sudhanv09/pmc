@@ -1,7 +1,7 @@
 import pmc/[db, indexer, player, utils]
 import argparse
 import std/[asyncdispatch, os, strformat, strutils, sugar]
-import cli/pprint
+import cli/[pprint, select]
 
 let dbCtx = db_init()
 
@@ -30,7 +30,13 @@ proc user_init() =
       else:
         echo "Invalid directory. Please enter a valid absolute path:"
 
-proc play_movie() = discard
+proc play_movie() = 
+  let movies = get_all_movies()
+  let choice = select(movies.map(m => guessMovieName(m.name)), prompt="Select a movie to play:")
+  let movie = movies[choice]
+  # play_media(movie)
+  echo "Playing movie: " & movie.name
+
 proc play_show() = discard
 
 proc list_media() =
@@ -55,9 +61,9 @@ var args = newParser:
     flag("--movie")
     run:
       if opts.movie:
-        echo "playing movie"
+        play_movie()
       elif opts.tv:
-        echo "playing tv"
+        play_show()
   command("resume"):
     run:
       echo "resuming playback"
