@@ -1,7 +1,7 @@
 import std/[strutils, times, os, paths]
 import db_connector/db_sqlite
-import nanoid
 import indexer
+import utils
 
 type WatchHistory* = object
   id*: string
@@ -75,7 +75,7 @@ proc db_init*(path: string = "pmc.db"): DbConn =
   return db
 
 # Watch history CRUD
-proc save_state(wh: WatchHistory) =
+proc save_state*(wh: WatchHistory) =
   exec(
     db,
     sql"""INSERT INTO watch_history (id, media_id, media_type, progress, complete, watched_at) VALUES (?, ?, ?, ?, ?, ?)""",
@@ -121,7 +121,7 @@ proc save_media_playback*(media_id: string, media_type: string, progress: int, i
   if progress < 0 and not is_completed:
     return
 
-  let watch_id = generate(alphabet="abcdefghijklmnopqrstuvwxyz", size=7)
+  let watch_id = randomId(7, "abcdefghijklmnopqrstuvwxyz")
   let entry = WatchHistory(
     id: watch_id, media_id: media_id, media_type: media_type, progress: progress, complete: is_completed, watched_at: $now()
   )

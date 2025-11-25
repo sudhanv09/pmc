@@ -1,6 +1,5 @@
 import std/[times, paths, dirs, sequtils, strutils, os]
 import checksums/sha1
-import nanoid
 import utils
 
 type
@@ -40,7 +39,7 @@ proc index_movies(dir: Path): seq[Movie] =
   for kind, path in walkDir(dir):
     if kind == pcFile and isMediaFile($path):
       let movie = Movie(
-        id: generate(size=10),
+        id: randomId(10),
         name: path.splitPath.tail.string,
         path: path,
         created_at: now(),
@@ -55,10 +54,10 @@ proc index_movies(dir: Path): seq[Movie] =
 proc index_shows(dir: Path): seq[Show] =
   for kind, showDir in walkDir(dir):
     if kind == pcDir:
-      var show = Show(id: generate(size=10), name: showDir.splitPath.tail.string, seasons: @[])
+      var show = Show(id: randomId(10), name: showDir.splitPath.tail.string, seasons: @[])
 
       # collect immediate files (implicit Season 1)
-      var season1 = Season(id: generate(size=10), number: 1, episodes: @[])
+      var season1 = Season(id: randomId(10), number: 1, episodes: @[])
       for _, epPath in walkDir(showDir, relative = false):
         if fileExists($epPath) and isMediaFile($epPath):
           season1.episodes.add Episode(
@@ -77,7 +76,7 @@ proc index_shows(dir: Path): seq[Show] =
         if dirExists(seasonDir) and seasonDir != showDir:
           let seasonNum = guessSeason($seasonDir)
 
-          var season = Season(id: generate(size=10), number: seasonNum, episodes: @[])
+          var season = Season(id: randomId(10), number: seasonNum, episodes: @[])
           for _, epPath in walkDir(seasonDir):
             if fileExists($epPath) and isMediaFile($epPath):
               season.episodes.add Episode(

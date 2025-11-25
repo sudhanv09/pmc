@@ -1,4 +1,21 @@
-import std/[nre, strutils]
+import std/[nre, strutils, random]
+
+const defaultAlphabet = "_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+var rngSeeded = false
+
+proc ensureSeeded() =
+  if not rngSeeded:
+    randomize()
+    rngSeeded = true
+
+proc randomId*(size: int = 10, alphabet: string = defaultAlphabet): string =
+  if size <= 0 or alphabet.len == 0:
+    return ""
+  ensureSeeded()
+  result = newString(size)
+  for i in 0 ..< size:
+    result[i] = alphabet[rand(alphabet.high)]
 
 proc guessSeason*(item: string): int =
   let patterns = [
@@ -39,5 +56,3 @@ proc guessEpisode*(item: string): int =
         discard
 
   return 0
-
-echo guessEpisode("Cartoon Ep05.mp4")
