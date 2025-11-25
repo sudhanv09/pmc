@@ -1,4 +1,4 @@
-import pmc/[db, indexer, player]
+import pmc/[db, indexer, player, utils]
 import argparse
 import std/[asyncdispatch, os, strformat, strutils, sugar]
 import cli/pprint
@@ -30,9 +30,12 @@ proc user_init() =
       else:
         echo "Invalid directory. Please enter a valid absolute path:"
 
+proc play_movie() = discard
+proc play_show() = discard
+
 proc list_media() =
   echo "Movies:"
-  pprint(get_all_movies().map(m => m.name), cols=2)
+  pprint(get_all_movies().map(m => guessMovieName(m.name)), cols=2)
   
   echo "\nShows:"
   pprint(get_all_shows().map(s => s.name), cols=2)
