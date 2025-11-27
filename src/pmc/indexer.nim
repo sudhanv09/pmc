@@ -38,9 +38,12 @@ proc isMediaFile(path: string): bool =
 proc index_movies(dir: Path): seq[Movie] =
   for kind, path in walkDir(dir):
     if kind == pcFile and isMediaFile($path):
+      let name = guessMovieName(path.splitPath.tail.string)
+      if name == "Sample":
+        continue
       let movie = Movie(
         id: randomId(10),
-        name: path.splitPath.tail.string,
+        name: name,
         path: path,
         created_at: now(),
         size: getFileSize($path),
