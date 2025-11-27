@@ -3,13 +3,21 @@ import db_connector/db_sqlite
 import indexer
 import utils
 
-type WatchHistory* = object
-  id*: string
-  mediaId*: string
-  mediaType*: string
-  progress*: int
-  complete*: bool
-  watchedAt*: string
+type
+  WatchHistory* = object
+    id*: string
+    mediaId*: string
+    mediaType*: string
+    progress*: int
+    complete*: bool
+    watchedAt*: string
+
+  EpisodeContext* = object
+    showName*: string
+    seasonNumber*: int
+    episodeName*: string
+    episodeIndex*: int
+    totalEpisodes*: int
 
 var db: DbConn
 
@@ -116,6 +124,54 @@ proc get_recent_watches*(limit: int = 10): seq[WatchHistory] =
       complete: parseBool(row[4]),
       watchedAt: row[5],
     )
+
+proc get_movie_by_id*(movieId: string): Movie =
+  for row in fastRows(
+    db, sql"""SELECT id, name, path, size, created_at FROM movies WHERE id = ? LIMIT 1""", movieId
+  ):
+    return Movie(
+      id: row[0],
+      name: row[1],
+      path: Path(row[2]),
+      size: parseInt(row[3]),
+      created_at: parse(row[4], "yyyy-MM-dd'T'HH:mm:sszzz"),
+    )
+
+proc get_episode_context*(episodeId: string): EpisodeContext =
+  var seasonId: string
+  for row in fastRows(
+    db, sql"""SELECT name, season_id FROM episodes WHERE id = ? LIMIT 1""", episodeId
+  ):
+    result.episodeName = row[0]
+    seasonId = row[1]
+
+  if seasonId.len == 0:
+    return
+
+  var showId: string
+  for row in fastRows(
+    db, sql"""SELECT number, show_id FROM seasons WHERE id = ? LIMIT 1""", seasonId
+  ):
+    result.seasonNumber = parseInt(row[0])
+    showId = row[1]
+
+  if showId.len > 0:
+    for row in fastRows(
+      db, sql"""SELECT name FROM shows WHERE id = ? LIMIT 1""", showId
+    ):
+      result.showName = row[0]
+
+  var counter = 0
+  for row in fastRows(
+    db,
+    sql"""SELECT id FROM episodes WHERE season_id = ? ORDER BY created_at ASC, name ASC""",
+    seasonId,
+  ):
+    inc counter
+    if row[0] == episodeId:
+      result.episodeIndex = counter
+
+  result.totalEpisodes = counter
 
 proc save_media_playback*(media_id: string, media_type: string, progress: int, is_completed: bool) =
   if progress < 0 and not is_completed:

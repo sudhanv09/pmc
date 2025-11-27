@@ -1,7 +1,7 @@
-import pmc/[db, indexer, player, utils]
+import pmc/[db, indexer, player]
 import argparse
-import std/[asyncdispatch, os, strformat, strutils, sugar]
-import cli/[pprint, select]
+import std/[os, sugar]
+import cli/[pprint]
 
 let dbCtx = db_init()
 
@@ -30,21 +30,46 @@ proc user_init() =
       else:
         echo "Invalid directory. Please enter a valid absolute path:"
 
-proc play_movie() = 
-  let movies = get_all_movies()
-  let choice = select(movies.map(m => guessMovieName(m.name)), prompt="Select a movie to play:")
-  let movie = movies[choice]
-  # play_media(movie)
-  echo "Playing movie: " & movie.name
-
-proc play_show() = discard
-
 proc list_media() =
   echo "Movies:"
-  pprint(get_all_movies().map(m => guessMovieName(m.name)), cols=2)
+  pprint(get_all_movies().map(m => m.name).sorted(), cols=2)
   
   echo "\nShows:"
   pprint(get_all_shows().map(s => s.name), cols=2)
+
+proc recent_watch() =
+  let recentHistory = get_recent_watches()
+  if recentHistory.len == 0:
+    echo "No recent watches found."
+    return
+
+  echo "Recently watched:"
+  for entry in recentHistory:
+    let progressLabel = if entry.complete: "Completed" else: $entry.progress & "%"
+
+    case entry.mediaType:
+    of "movie":
+      let movie = get_movie_by_id(entry.mediaId)
+      let title = if movie.name.len > 0: movie.name else: "Unknown movie"
+      echo "- " & title & " (" & progressLabel & ")"
+    of "episode":
+      let ctx = get_episode_context(entry.mediaId)
+      var details = if ctx.showName.len > 0: ctx.showName else: "Unknown show"
+      if ctx.seasonNumber > 0:
+        details &= " Season " & $ctx.seasonNumber
+      if ctx.episodeName.len > 0:
+        details &= " - " & ctx.episodeName
+
+      var position = ""
+      if ctx.episodeIndex > 0 and ctx.totalEpisodes > 0:
+        position = "Episode " & $ctx.episodeIndex & " of " & $ctx.totalEpisodes
+
+      if position.len > 0:
+        details &= " (" & position & ")"
+
+      echo "- " & details & " (" & progressLabel & ")"
+    else:
+      echo "- Unknown media (" & progressLabel & ")"
 
 
 var args = newParser:
@@ -54,8 +79,7 @@ var args = newParser:
       list_media()
   command("recent"):
     run:
-      echo "recently watched movies and shows"
-      echo get_recent_watches()
+      recent_watch()
   command("play"):
     flag("--tv")
     flag("--movie")
@@ -66,7 +90,7 @@ var args = newParser:
         play_show()
   command("resume"):
     run:
-      echo "resuming playback"
+      resume_playback()
   command("sync"):
     run:
       echo "reindexing"
