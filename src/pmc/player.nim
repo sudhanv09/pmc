@@ -6,11 +6,47 @@ type
   MediaKind* = enum
     MovieKind, EpisodeKind
 
-  MediaItem* = object
+  MediaItem* = ref object
     id*: string
     name*: string
     path*: string
     kind*: MediaKind
+
+proc save_playback_status(item: MediaItem, progress: int, completed: bool) =
+  let media_type = if item.kind == MovieKind: "movie" else: "episode"
+  save_media_playback(item.id, media_type, progress, completed)
+  if completed:
+    echo "Playback status saved to database"
+  else:
+    echo fmt"Playback progress ({progress}%) saved to database"
+
+proc try_transition_to_next_episode(current_item: MediaItem, current_ep_index: int, episodes: seq[Episode]): Future[(bool, MediaItem, int)] {.async.} =
+  if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
+    if current_ep_index + 1 < episodes.len:
+      let next_ep = episodes[current_ep_index + 1]
+      let new_item = MediaItem(id: next_ep.id, name: next_ep.name, path: next_ep.path.string, kind: EpisodeKind)
+      let new_index = current_ep_index + 1
+      echo fmt"Transitioning to next episode: {next_ep.name}"
+      await set_playlist_pos(new_index)
+      updateState(status = Started, filename = new_item.path, position = 0.0)
+      return (true, new_item, new_index)
+    else:
+      echo "All episodes completed"
+  return (false, current_item, current_ep_index)
+
+proc try_transition_to_prev_episode(current_item: MediaItem, current_ep_index: int, episodes: seq[Episode]): Future[(bool, MediaItem, int)] {.async.} =
+  if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
+    if current_ep_index - 1 >= 0:
+      let prev_ep = episodes[current_ep_index - 1]
+      let new_item = MediaItem(id: prev_ep.id, name: prev_ep.name, path: prev_ep.path.string, kind: EpisodeKind)
+      let new_index = current_ep_index - 1
+      echo fmt"Transitioning to previous episode: {prev_ep.name}"
+      await set_playlist_pos(new_index)
+      updateState(status = Started, filename = new_item.path, position = 0.0)
+      return (true, new_item, new_index)
+    else:
+      echo "All episodes completed"
+  return (false, current_item, current_ep_index)
 
 proc monitor_playback(item: MediaItem, episodes: seq[Episode] = @[], current_index: int = -1) {.async.} = 
   var current_item = item
@@ -22,59 +58,52 @@ proc monitor_playback(item: MediaItem, episodes: seq[Episode] = @[], current_ind
     case state.status:
       of Completed:
         echo "Playback complete"
-        let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
-        save_media_playback(current_item.id, media_type, 100, true)
-        echo "Playback status saved to database"
-        # For episodes, check if there's a next one
-        if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
-          if current_ep_index + 1 < episodes.len:
-            let next_ep = episodes[current_ep_index + 1]
-            current_item = MediaItem(id: next_ep.id, name: next_ep.name, path: next_ep.path.string, kind: EpisodeKind)
-            current_ep_index = current_ep_index + 1
-            echo fmt"Transitioning to next episode: {next_ep.name}"
-            
-            await set_playlist_pos(current_ep_index)
-            
-            updateState(status = Started, filename = current_item.path, position = 0.0)
-          else:
-            echo "All episodes completed"
-            break
+        save_playback_status(current_item, 100, true)
+        let (success, new_item, new_index) = await try_transition_to_next_episode(current_item, current_ep_index, episodes)
+        if success:
+          current_item = new_item
+          current_ep_index = new_index
         else:
           break
       of FileEnded:
-        # FileEnded can occur during transitions, only treat as complete if position > 98
         if state.position > 98.0:
           echo "Playback complete"
-          let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
-          save_media_playback(current_item.id, media_type, 100, true)
-          echo "Playback status saved to database"
-          # For episodes, check if there's a next one
-          if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
-            if current_ep_index + 1 < episodes.len:
-              let next_ep = episodes[current_ep_index + 1]
-              current_item = MediaItem(id: next_ep.id, name: next_ep.name, path: next_ep.path.string, kind: EpisodeKind)
-              current_ep_index = current_ep_index + 1
-              echo fmt"Transitioning to next episode: {next_ep.name}"
-              
-              await set_playlist_pos(current_ep_index)
-              
-              updateState(status = Started, filename = current_item.path, position = 0.0)
-            else:
-              echo "All episodes completed"
-              break
+          save_playback_status(current_item, 100, true)
+          let (success, new_item, new_index) = await try_transition_to_next_episode(current_item, current_ep_index, episodes)
+          if success:
+            current_item = new_item
+            current_ep_index = new_index
           else:
             break
       of Paused:
-        echo "Playback paused"
+        stdout.write("\r\x1b[K")
+        stdout.write("Paused")
+        stdout.flushFile()
       of RequestedQuit, Exited:
         echo "Playback stopped by user"
-        let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
-        save_media_playback(current_item.id, media_type, int(state.position), false)
-        echo fmt"Playback progress ({state.position:.2f}%) saved to database"
+        save_playback_status(current_item, int(state.position), false)
         break
+      of RequestedNext:
+        echo "Requested next episode"
+        let (success, new_item, new_index) = await try_transition_to_next_episode(current_item, current_ep_index, episodes)
+        if success:
+          current_item = new_item
+          current_ep_index = new_index
+        else:
+          break
+      of RequestedPrev:
+        echo "Requested previous episode"
+        let (success, new_item, new_index) = await try_transition_to_prev_episode(current_item, current_ep_index, episodes)
+        if success:
+          current_item = new_item
+          current_ep_index = new_index
+        else:
+          break
       else: 
         if state.position > 0:
-            echo fmt"Playing at {state.position:.2f}%"
+            stdout.write("\r\x1b[K")   # move to line start + clear line
+            stdout.write(fmt"Playing at {state.position:.2f}%")
+            stdout.flushFile()
         discard
 
 proc flatten_show(show: Show): seq[Episode] = 
