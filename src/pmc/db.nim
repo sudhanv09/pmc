@@ -1,4 +1,4 @@
-import std/[strutils, times, os, paths]
+import std/[strutils, times, os, paths, options]
 import db_connector/db_sqlite
 import indexer
 import utils
@@ -124,6 +124,32 @@ proc get_recent_watches*(limit: int = 10): seq[WatchHistory] =
       complete: parseBool(row[4]),
       watchedAt: row[5],
     )
+
+proc get_most_recent_episode_watch*(showId: string): Option[WatchHistory] =
+  # Query watch_history for the most recent episode watch of this show
+  # Join through seasons and episodes to find all episode IDs for this show
+  for row in fastRows(
+    db,
+    sql"""
+      SELECT wh.id, wh.media_id, wh.media_type, wh.progress, wh.complete, wh.watched_at
+      FROM watch_history wh
+      INNER JOIN episodes e ON wh.media_id = e.id
+      INNER JOIN seasons s ON e.season_id = s.id
+      WHERE s.show_id = ? AND wh.media_type = 'episode'
+      ORDER BY wh.watched_at DESC
+      LIMIT 1
+    """,
+    showId,
+  ):
+    return some(WatchHistory(
+      id: row[0],
+      mediaId: row[1],
+      mediaType: row[2],
+      progress: parseInt(row[3]),
+      complete: parseBool(row[4]),
+      watchedAt: row[5],
+    ))
+  return none(WatchHistory)
 
 proc get_movie_by_id*(movieId: string): Movie =
   for row in fastRows(
