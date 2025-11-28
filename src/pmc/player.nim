@@ -12,33 +12,67 @@ type
     path*: string
     kind*: MediaKind
 
-proc monitor_playback(item: MediaItem) {.async.} = 
+proc monitor_playback(item: MediaItem, episodes: seq[Episode] = @[], current_index: int = -1) {.async.} = 
+  var current_item = item
+  var current_ep_index = current_index
   echo "Starting monitoring"
   while true:
-    await sleepAsync(3000)
+    await sleepAsync(1500)
     let state = getState()
     case state.status:
       of Completed:
         echo "Playback complete"
-        let media_type = if item.kind == MovieKind: "movie" else: "episode"
-        save_media_playback(item.id, media_type, 100, true)
+        let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
+        save_media_playback(current_item.id, media_type, 100, true)
         echo "Playback status saved to database"
-        break
+        # For episodes, check if there's a next one
+        if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
+          if current_ep_index + 1 < episodes.len:
+            let next_ep = episodes[current_ep_index + 1]
+            current_item = MediaItem(id: next_ep.id, name: next_ep.name, path: next_ep.path.string, kind: EpisodeKind)
+            current_ep_index = current_ep_index + 1
+            echo fmt"Transitioning to next episode: {next_ep.name}"
+            
+            await set_playlist_pos(current_ep_index)
+            
+            updateState(status = Started, filename = current_item.path, position = 0.0)
+          else:
+            echo "All episodes completed"
+            break
+        else:
+          break
       of FileEnded:
-        echo "File ended"
-        let media_type = if item.kind == MovieKind: "movie" else: "episode"
-        save_media_playback(item.id, media_type, 100, true)
-        echo "Episode completed, moving to next in playlist"
+        # FileEnded can occur during transitions, only treat as complete if position > 98
+        if state.position > 98.0:
+          echo "Playback complete"
+          let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
+          save_media_playback(current_item.id, media_type, 100, true)
+          echo "Playback status saved to database"
+          # For episodes, check if there's a next one
+          if current_item.kind == EpisodeKind and episodes.len > 0 and current_ep_index >= 0:
+            if current_ep_index + 1 < episodes.len:
+              let next_ep = episodes[current_ep_index + 1]
+              current_item = MediaItem(id: next_ep.id, name: next_ep.name, path: next_ep.path.string, kind: EpisodeKind)
+              current_ep_index = current_ep_index + 1
+              echo fmt"Transitioning to next episode: {next_ep.name}"
+              
+              await set_playlist_pos(current_ep_index)
+              
+              updateState(status = Started, filename = current_item.path, position = 0.0)
+            else:
+              echo "All episodes completed"
+              break
+          else:
+            break
       of Paused:
         echo "Playback paused"
       of RequestedQuit, Exited:
         echo "Playback stopped by user"
-        let media_type = if item.kind == MovieKind: "movie" else: "episode"
-        save_media_playback(item.id, media_type, int(state.position), false)
+        let media_type = if current_item.kind == MovieKind: "movie" else: "episode"
+        save_media_playback(current_item.id, media_type, int(state.position), false)
         echo fmt"Playback progress ({state.position:.2f}%) saved to database"
         break
       else: 
-        # Continue monitoring
         if state.position > 0:
             echo fmt"Playing at {state.position:.2f}%"
         discard
@@ -82,9 +116,9 @@ proc find_last_watched_episode(show: Show, episodes: seq[Episode]): (Episode, in
   else:
     raise newException(ValueError, "No episodes found for show")
 
-proc play_media(item: MediaItem, startPosition: float = 0.0, playlist: seq[string] = @[], playlistIndex: int = 0) {.async.} =  
+proc play_media(item: MediaItem, startPosition: float = 0.0, playlist: seq[string] = @[], playlistIndex: int = 0, episodes: seq[Episode] = @[]) {.async.} =  
   let mpv_process = spawn_mpv()
-  await sleepAsync(1000)
+  await sleepAsync(2000)
   
   await mpv_init()
   
@@ -105,7 +139,7 @@ proc play_media(item: MediaItem, startPosition: float = 0.0, playlist: seq[strin
   
   updateState(status = Started, filename = item.path, position = startPosition)
 
-  await monitor_playback(item)
+  await monitor_playback(item, episodes, playlistIndex)
 
 proc play_movie*() = 
   let movies = get_all_movies().sortedByIt(it.name)
@@ -142,7 +176,8 @@ proc play_show*() =
     MediaItem(id: start_episode.id, name: start_episode.name, path: start_episode.path.string, kind: EpisodeKind),
     float(start_progress),
     playlist,
-    playlist_index
+    playlist_index,
+    episodes
   )
 
 proc resume_playback*() =
