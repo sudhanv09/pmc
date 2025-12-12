@@ -25,6 +25,13 @@ proc get_db*(): DbConn =
   return db
 
 proc db_create*() =
+  db.exec(sql"""
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    """)
+
   db.exec(
     sql"""
     CREATE TABLE IF NOT EXISTS watch_history (
@@ -81,6 +88,15 @@ proc db_init*(path: string = "pmc.db"): DbConn =
   if not db_exists:
     db_create()
   return db
+
+# Settings CRUD
+proc save_setting*(key: string, value: string) =
+  db.exec(sql"""INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)""", key, value)
+
+proc get_setting*(key: string): Option[string] =
+  for row in fastRows(db, sql"""SELECT value FROM settings WHERE key = ? LIMIT 1""", key):
+    return some(row[0])
+  return none(string)
 
 # Watch history CRUD
 proc save_state*(wh: WatchHistory) =
@@ -162,6 +178,31 @@ proc get_movie_by_id*(movieId: string): Movie =
       size: parseInt(row[3]),
       created_at: parse(row[4], "yyyy-MM-dd'T'HH:mm:sszzz"),
     )
+
+proc movie_exists_by_path*(path: Path): bool =
+  for _ in fastRows(db, sql"""SELECT 1 FROM movies WHERE path = ? LIMIT 1""", $path):
+    return true
+  return false
+
+proc episode_exists_by_path*(path: Path): bool =
+  for _ in fastRows(db, sql"""SELECT 1 FROM episodes WHERE path = ? LIMIT 1""", $path):
+    return true
+  return false
+
+proc get_show_id_by_name*(name: string): Option[string] =
+  for row in fastRows(db, sql"""SELECT id FROM shows WHERE name = ? LIMIT 1""", name):
+    return some(row[0])
+  return none(string)
+
+proc get_season_id_by_show_and_number*(show_id: string, number: int): Option[string] =
+  for row in fastRows(
+    db,
+    sql"""SELECT id FROM seasons WHERE show_id = ? AND number = ? LIMIT 1""",
+    show_id,
+    $number,
+  ):
+    return some(row[0])
+  return none(string)
 
 proc get_episode_context*(episodeId: string): EpisodeContext =
   var seasonId: string
@@ -283,3 +324,40 @@ proc save_episode*(episode: Episode, season_id: string) =
     $episode.size,
     $episode.created_at,
   )
+
+proc sync_library*(media_dir: string): tuple[movies: int, episodes: int] =
+  ## Syncs the library by adding only new files. Returns count of added items.
+  var addedMovies = 0
+  var addedEpisodes = 0
+
+  let library = create_index(media_dir)
+
+  # Sync movies
+  for movie in library.Movies:
+    if not movie_exists_by_path(movie.path):
+      save_movie(movie)
+      inc addedMovies
+
+  # Sync shows
+  for show in library.Shows:
+    let existingShowId = get_show_id_by_name(show.name)
+    let showId = if existingShowId.isSome:
+      existingShowId.get
+    else:
+      save_show(show)
+      show.id
+
+    for season in show.seasons:
+      let existingSeasonId = get_season_id_by_show_and_number(showId, season.number)
+      let seasonId = if existingSeasonId.isSome:
+        existingSeasonId.get
+      else:
+        save_season(season, showId)
+        season.id
+
+      for episode in season.episodes:
+        if not episode_exists_by_path(episode.path):
+          save_episode(episode, seasonId)
+          inc addedEpisodes
+
+  return (movies: addedMovies, episodes: addedEpisodes)

@@ -1,6 +1,6 @@
 import pmc/[db, indexer, player]
 import argparse
-import std/[os, sugar]
+import std/[os, sugar, options]
 import cli/[pprint]
 
 let dbCtx = db_init()
@@ -14,6 +14,7 @@ proc user_init() =
       let input_dir = readLine(stdin)
       if dirExists(input_dir):
         media_dir = input_dir
+        save_setting("media_dir", media_dir)
         echo "Media directory set to: " & media_dir
         echo "Indexing your media... This might take a while."
         let library = create_index(media_dir)
@@ -93,7 +94,13 @@ var args = newParser:
       resume_playback()
   command("sync"):
     run:
-      echo "reindexing"
+      let media_dir = get_setting("media_dir")
+      if media_dir.isNone:
+        echo "No media directory configured. Please run pmc without arguments to set it up."
+        return
+      echo "Syncing library from: " & media_dir.get
+      let (addedMovies, addedEpisodes) = sync_library(media_dir.get)
+      echo "Sync complete! Added " & $addedMovies & " movies and " & $addedEpisodes & " episodes."
 
 args.run()
 user_init()
