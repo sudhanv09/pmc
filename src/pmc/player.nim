@@ -82,6 +82,7 @@ proc monitor_playback(item: MediaItem, episodes: seq[Episode] = @[], current_ind
       of RequestedQuit, Exited:
         echo "Playback stopped by user"
         save_playback_status(current_item, int(state.position), false)
+        await user_quit()
         break
       of RequestedNext:
         echo "Requested next episode"

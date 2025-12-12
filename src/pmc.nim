@@ -74,7 +74,7 @@ proc recent_watch() =
 
 var args = newParser:
   help("A simple media manager utility which can play your media using MPV")
-  command("list"):
+  command("ls"):
     run:
       list_media()
   command("recent"):

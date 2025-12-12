@@ -61,7 +61,7 @@ proc seek*(pos: string) {.async.} =
   let cmd = %* { "command": ["seek", pos, "absolute-percent"] }
   discard await sendCommand(cmd)
 
-proc user_quit() {.async.} =
+proc user_quit*() {.async.} =
   let cmd = %* { "command": ["quit"] }
   discard await sendCommand(cmd)
 
