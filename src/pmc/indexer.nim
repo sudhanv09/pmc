@@ -1,6 +1,5 @@
-import std/[times, paths, dirs, sequtils, strutils, os]
+import std/[times, paths, dirs, sequtils, strutils, os, algorithm]
 import checksums/sha1
-import nanoid
 import utils
 
 type
@@ -39,9 +38,12 @@ proc isMediaFile(path: string): bool =
 proc index_movies(dir: Path): seq[Movie] =
   for kind, path in walkDir(dir):
     if kind == pcFile and isMediaFile($path):
+      let name = guessMovieName(path.splitPath.tail.string)
+      if name == "Sample":
+        continue
       let movie = Movie(
-        id: generate(size=10),
-        name: path.splitPath.tail.string,
+        id: randomId(10),
+        name: name,
         path: path,
         created_at: now(),
         size: getFileSize($path),
@@ -55,10 +57,10 @@ proc index_movies(dir: Path): seq[Movie] =
 proc index_shows(dir: Path): seq[Show] =
   for kind, showDir in walkDir(dir):
     if kind == pcDir:
-      var show = Show(id: generate(size=10), name: showDir.splitPath.tail.string, seasons: @[])
+      var show = Show(id: randomId(10), name: showDir.splitPath.tail.string, seasons: @[])
 
       # collect immediate files (implicit Season 1)
-      var season1 = Season(id: generate(size=10), number: 1, episodes: @[])
+      var season1 = Season(id: randomId(10), number: 1, episodes: @[])
       for _, epPath in walkDir(showDir, relative = false):
         if fileExists($epPath) and isMediaFile($epPath):
           season1.episodes.add Episode(
@@ -70,6 +72,10 @@ proc index_shows(dir: Path): seq[Show] =
           )
 
       if season1.episodes.len > 0:
+        # Sort episodes by episode number
+        season1.episodes.sort(proc (a, b: Episode): int =
+          cmp(guessEpisode($a.path), guessEpisode($b.path))
+        )
         show.seasons.add(season1)
 
       # collect season subfolders
@@ -77,7 +83,7 @@ proc index_shows(dir: Path): seq[Show] =
         if dirExists(seasonDir) and seasonDir != showDir:
           let seasonNum = guessSeason($seasonDir)
 
-          var season = Season(id: generate(size=10), number: seasonNum, episodes: @[])
+          var season = Season(id: randomId(10), number: seasonNum, episodes: @[])
           for _, epPath in walkDir(seasonDir):
             if fileExists($epPath) and isMediaFile($epPath):
               season.episodes.add Episode(
@@ -89,9 +95,17 @@ proc index_shows(dir: Path): seq[Show] =
               )
 
           if season.episodes.len > 0:
+            # Sort episodes by episode number
+            season.episodes.sort(proc (a, b: Episode): int =
+              cmp(guessEpisode($a.path), guessEpisode($b.path))
+            )
             show.seasons.add(season)
 
       if show.seasons.len > 0:
+        # Sort seasons by season number
+        show.seasons.sort(proc (a, b: Season): int =
+          cmp(a.number, b.number)
+        )
         result.add(show)
 
 proc create_index*(dir: string): Library =

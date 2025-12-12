@@ -57,11 +57,11 @@ proc observe_property(name: string, id: int) {.async.} =
   let cmd = %* { "command": ["observe_property", id, name] }
   discard await sendCommand(cmd)
 
-proc seek(pos: string) {.async.} =
+proc seek*(pos: string) {.async.} =
   let cmd = %* { "command": ["seek", pos, "absolute-percent"] }
   discard await sendCommand(cmd)
 
-proc user_quit() {.async.} =
+proc user_quit*() {.async.} =
   let cmd = %* { "command": ["quit"] }
   discard await sendCommand(cmd)
 
@@ -143,3 +143,7 @@ proc buildPlaylist*(files: seq[string]) {.async.} =
   for f in files:
     let cmd = %* { "command": ["loadfile", f, "append"] }
     discard await sendCommand(cmd)
+
+proc set_playlist_pos*(index: int) {.async.} =
+  let cmd = %* { "command": ["set_property", "playlist-pos", index] }
+  discard await sendCommand(cmd)

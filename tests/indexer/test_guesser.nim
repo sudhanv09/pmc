@@ -38,3 +38,16 @@ suite "guessEpisode":
   test "no match":
     check guessEpisode("RandomMovie2022") == 0
     check guessEpisode("SeasonOnly.S02.Special") == 0
+
+suite "guessMovieName":
+  test "simple name":
+    check guessMovieName("MyMovie.mkv") == "MyMovie"
+    check guessMovieName("AnotherMovie.mp4") == "AnotherMovie"
+
+  test "with year":
+    check guessMovieName("MyMovie (2022).mkv") == "MyMovie"
+    check guessMovieName("AnotherMovie (2023).mp4") == "AnotherMovie"
+    check guessMovieName("Black Swan (2010) (1080p BluRay x265 afm72).mkv") == "Black Swan"
+
+  test "with year and episode":
+    check guessMovieName("Troy.Director's.Cut.2004.Bluray.1080P.AV1.OPUS.5.1-DECK.mkv") == "Troy Director's Cut"
