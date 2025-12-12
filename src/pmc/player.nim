@@ -1,6 +1,6 @@
 import std/[asyncdispatch, strformat, algorithm, sequtils, sugar, options]
 import ../cli/select
-import mpv, db, indexer
+import mpv, db, indexer, utils
 
 type
   MediaKind* = enum
@@ -106,10 +106,21 @@ proc monitor_playback(item: MediaItem, episodes: seq[Episode] = @[], current_ind
             stdout.flushFile()
         discard
 
-proc flatten_show(show: Show): seq[Episode] = 
+proc flatten_show*(show: Show): seq[Episode] = 
   var eps: seq[Episode] = @[]
-  for season in show.seasons:
-    for episode in season.episodes:
+  
+  # Sort seasons by season number
+  var sorted_seasons = show.seasons
+  sorted_seasons.sort(proc (a, b: Season): int =
+    cmp(a.number, b.number)
+  )
+  
+  for season in sorted_seasons:
+    var sorted_episodes = season.episodes
+    sorted_episodes.sort(proc (a, b: Episode): int =
+      cmp(guessEpisode(a.path.string), guessEpisode(b.path.string))
+    )
+    for episode in sorted_episodes:
       eps.add(episode)
   
   return eps

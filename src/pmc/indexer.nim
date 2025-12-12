@@ -1,4 +1,4 @@
-import std/[times, paths, dirs, sequtils, strutils, os]
+import std/[times, paths, dirs, sequtils, strutils, os, algorithm]
 import checksums/sha1
 import utils
 
@@ -72,6 +72,10 @@ proc index_shows(dir: Path): seq[Show] =
           )
 
       if season1.episodes.len > 0:
+        # Sort episodes by episode number
+        season1.episodes.sort(proc (a, b: Episode): int =
+          cmp(guessEpisode($a.path), guessEpisode($b.path))
+        )
         show.seasons.add(season1)
 
       # collect season subfolders
@@ -91,9 +95,17 @@ proc index_shows(dir: Path): seq[Show] =
               )
 
           if season.episodes.len > 0:
+            # Sort episodes by episode number
+            season.episodes.sort(proc (a, b: Episode): int =
+              cmp(guessEpisode($a.path), guessEpisode($b.path))
+            )
             show.seasons.add(season)
 
       if show.seasons.len > 0:
+        # Sort seasons by season number
+        show.seasons.sort(proc (a, b: Season): int =
+          cmp(a.number, b.number)
+        )
         result.add(show)
 
 proc create_index*(dir: string): Library =
