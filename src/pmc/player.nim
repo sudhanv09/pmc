@@ -222,4 +222,63 @@ proc play_show*() =
   )
 
 proc resume_playback*() =
-  discard
+  let recent = get_recent_watches(1)
+  if recent.len == 0:
+    echo "No playback history found"
+    return
+
+  let lastWatch = recent[0]
+  let startProgress = if lastWatch.complete or lastWatch.progress >= 100: 0.0 else: float(lastWatch.progress)
+
+  if lastWatch.mediaType == "movie":
+    let movie = get_movie_by_id(lastWatch.mediaId)
+    if movie.id.len == 0:
+      echo "Could not find last watched movie"
+      return
+    echo fmt"Resuming movie: {movie.name} at {startProgress}%"
+    waitFor play_media(
+      MediaItem(id: movie.id, name: movie.name, path: movie.path.string, kind: MovieKind),
+      startProgress
+    )
+  elif lastWatch.mediaType == "episode":
+    let ctx = get_episode_context(lastWatch.mediaId)
+    if ctx.showName.len == 0:
+      echo "Could not determine show for last watched episode"
+      return
+
+    let shows = get_all_shows()
+    var showOpt: Option[Show]
+    for s in shows:
+      if s.name == ctx.showName:
+        showOpt = some(s)
+        break
+
+    if showOpt.isNone:
+      echo fmt"Show not found: {ctx.showName}"
+      return
+
+    let show = showOpt.get
+    let episodes = flatten_show(show)
+    if episodes.len == 0:
+      echo "No episodes found for this show"
+      return
+
+    var playlist_index = 0
+    for i, ep in episodes:
+      if ep.id == lastWatch.mediaId:
+        playlist_index = i
+        break
+
+    let startEpisode = episodes[playlist_index]
+    let playlist = episodes.map(ep => ep.path.string)
+
+    echo fmt"Resuming show: {show.name} from {startEpisode.name} at {startProgress}%"
+    waitFor play_media(
+      MediaItem(id: startEpisode.id, name: startEpisode.name, path: startEpisode.path.string, kind: EpisodeKind),
+      startProgress,
+      playlist,
+      playlist_index,
+      episodes
+    )
+  else:
+    echo fmt"Unknown media type in history: {lastWatch.mediaType}"
