@@ -4,6 +4,10 @@ import indexer
 import utils
 
 type
+  MissingMedia* = object
+    mediaType*: string
+    path*: string
+
   WatchHistory* = object
     id*: string
     mediaId*: string
@@ -361,3 +365,46 @@ proc sync_library*(media_dir: string): tuple[movies: int, episodes: int] =
           inc addedEpisodes
 
   return (movies: addedMovies, episodes: addedEpisodes)
+
+proc get_missing_media*(): seq[MissingMedia] =
+  for row in fastRows(db, sql"""SELECT path FROM movies"""):
+    if not fileExists(row[0]):
+      result.add MissingMedia(mediaType: "movie", path: row[0])
+
+  for row in fastRows(db, sql"""SELECT path FROM episodes"""):
+    if not fileExists(row[0]):
+      result.add MissingMedia(mediaType: "episode", path: row[0])
+
+proc remove_missing_media*(missingMedia: seq[MissingMedia]): tuple[movies: int, episodes: int] =
+  var removedMovies = 0
+  var removedEpisodes = 0
+
+  for item in missingMedia:
+    if item.mediaType == "movie":
+      db.exec(sql"""DELETE FROM movies WHERE path = ?""", item.path)
+      inc removedMovies
+    elif item.mediaType == "episode":
+      db.exec(sql"""DELETE FROM episodes WHERE path = ?""", item.path)
+      inc removedEpisodes
+
+  db.exec(sql"""
+    DELETE FROM seasons
+    WHERE id IN (
+      SELECT s.id
+      FROM seasons s
+      LEFT JOIN episodes e ON e.season_id = s.id
+      WHERE e.id IS NULL
+    )
+  """)
+
+  db.exec(sql"""
+    DELETE FROM shows
+    WHERE id IN (
+      SELECT sh.id
+      FROM shows sh
+      LEFT JOIN seasons s ON s.show_id = sh.id
+      WHERE s.id IS NULL
+    )
+  """)
+
+  return (movies: removedMovies, episodes: removedEpisodes)

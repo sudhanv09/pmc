@@ -1,6 +1,6 @@
 import pmc/[db, indexer, player]
 import argparse
-import std/[os, sugar, options]
+import std/[os, sugar, options, strutils]
 import cli/[pprint]
 
 let dbCtx = db_init()
@@ -98,9 +98,29 @@ var args = newParser:
       if media_dir.isNone:
         echo "No media directory configured. Please run pmc without arguments to set it up."
         return
+
       echo "Syncing library from: " & media_dir.get
       let (addedMovies, addedEpisodes) = sync_library(media_dir.get)
-      echo "Sync complete! Added " & $addedMovies & " movies and " & $addedEpisodes & " episodes."
+      var removedMovies = 0
+      var removedEpisodes = 0
+
+      let missingMedia = get_missing_media()
+      if missingMedia.len > 0:
+        echo "\nFound " & $missingMedia.len & " library entries whose files are no longer on disk:"
+        for item in missingMedia:
+          echo "- [" & item.mediaType & "] " & item.path
+
+        echo "Remove these entries from the library? [y/N]"
+        let confirmation = readLine(stdin).strip().toLowerAscii()
+        if confirmation == "y" or confirmation == "yes":
+          let removed = remove_missing_media(missingMedia)
+          removedMovies = removed.movies
+          removedEpisodes = removed.episodes
+          echo "Removed " & $removedMovies & " movies and " & $removedEpisodes & " episodes."
+        else:
+          echo "Keeping missing entries in the library."
+
+      echo "Sync complete! Added " & $addedMovies & " movies and " & $addedEpisodes & " episodes; removed " & $removedMovies & " movies and " & $removedEpisodes & " episodes."
 
 args.run()
 user_init()
