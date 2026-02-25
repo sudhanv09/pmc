@@ -41,33 +41,25 @@ proc updateState*(status: PlaybackStatus = currentState.status,
   currentState.filename = filename
   currentState.position = position
 
-proc sendCommand(cmd: JsonNode): Future[JsonNode] {.async.} =
+proc sendCommand(cmd: JsonNode) {.async.} =
   let msg = $cmd & "\n"
   await mpvSocket.send(msg)
-  let response = await mpvSocket.recvLine()
-  if response.len == 0:
-    raise newException(ValueError, "Empty response from MPV")
-  result = parseJson(response)
-
-proc get_property(prop: string): Future[JsonNode] {.async.} =
-  let cmd = %* { "command": ["get_property", prop] }
-  return await sendCommand(cmd)
 
 proc observe_property(name: string, id: int) {.async.} =
   let cmd = %* { "command": ["observe_property", id, name] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
 
 proc seek*(pos: string) {.async.} =
   let cmd = %* { "command": ["seek", pos, "absolute-percent"] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
 
 proc user_quit*() {.async.} =
   let cmd = %* { "command": ["quit"] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
 
 proc user_stop() {.async.} =
   let cmd = %* { "command": ["stop"] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
 
 proc mpv_start_monitoring*() {.async.} = 
   await observe_property("pause", 1)
@@ -78,7 +70,8 @@ proc mpv_start_monitoring*() {.async.} =
     let line = await mpvSocket.recvLine()
     if line.len == 0:
       echo "Mpv socket closed"
-      quit(1)
+      updateState(status = Exited)
+      break
 
     try:
       let evt = parseJson(line)
@@ -118,6 +111,10 @@ proc mpv_start_monitoring*() {.async.} =
               updateState(status = RequestedQuit)
         else:
           discard
+      elif evt.hasKey("request_id") and evt.hasKey("error"):
+        let err = evt["error"].getStr()
+        if err != "success":
+          echo "MPV command failed: ", line
     except CatchableError as e:
       echo "Failed to parse line ", line, " error: ", e.msg
 
@@ -128,8 +125,7 @@ proc spawn_mpv*(socket_path: string = SOCKET_PATH): Process =
     "--idle=yes",
     "--force-window",
   ]
-    
-  return startProcess("mpv", args = mpv_args, options = {poUsePath})
+  return startProcess("mpv", args = mpv_args, options = {poUsePath, poParentStreams})
   
 proc mpv_init*() {.async.} =
   mpvSocket = newAsyncSocket(Domain.AF_UNIX, SockType.SOCK_STREAM, Protocol.IPPROTO_IP)
@@ -137,13 +133,13 @@ proc mpv_init*() {.async.} =
 
 proc play_file*(name: string) {.async.} =
   let cmd = %* { "command": ["loadfile", name, "replace"] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
 
 proc buildPlaylist*(files: seq[string]) {.async.} =
   for f in files:
     let cmd = %* { "command": ["loadfile", f, "append"] }
-    discard await sendCommand(cmd)
+    await sendCommand(cmd)
 
 proc set_playlist_pos*(index: int) {.async.} =
   let cmd = %* { "command": ["set_property", "playlist-pos", index] }
-  discard await sendCommand(cmd)
+  await sendCommand(cmd)
